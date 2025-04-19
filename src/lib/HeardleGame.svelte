@@ -1,7 +1,15 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import moment from 'moment';
-	import { Icon, Play, Pause, InformationCircle, QuestionMarkCircle } from 'svelte-hero-icons';
+	import {
+		Icon,
+		Play,
+		Pause,
+		InformationCircle,
+		QuestionMarkCircle,
+		Sun,
+		Moon
+	} from 'svelte-hero-icons';
 	declare const SC: any;
 
 	// ─── CONFIG & THEME ───────────────────────────────────────────────────────────
@@ -155,6 +163,10 @@
 
 	let showHowTo = false;
 	let showInfo = false;
+	let darkMode =
+		typeof window !== 'undefined'
+			? window.matchMedia('(prefers-color-scheme: dark)').matches
+			: false;
 	let userInput = '';
 	let suggestions: Track[] = [];
 	let selectedTrack: Track | null = null;
@@ -174,10 +186,12 @@
 	}
 
 	onMount(() => {
+		const mq = window.matchMedia('(prefers-color-scheme: dark)');
+		mq.addEventListener('change', (e) => (darkMode = e.matches));
+
 		widget = SC.Widget(iframeElement);
 		widget.bind(SC.Widget.Events.READY, () => (widgetReady = true));
 
-		// precise snippet cutoff in PLAY_PROGRESS:
 		widget.bind(SC.Widget.Events.PLAY_PROGRESS, (e: { currentPosition: number }) => {
 			const limit = segmentDurations[attemptCount];
 			if (e.currentPosition >= limit) {
@@ -194,13 +208,11 @@
 	});
 
 	onDestroy(() => {
-		widget?.unbind && Object.values(SC.Widget.Events).forEach((ev: string) => widget.unbind(ev));
+		widget?.unbind && Object.values(SC.Widget.Events).forEach((ev) => widget.unbind(ev));
 	});
 
 	function playSegment() {
 		if (!widgetReady || gameOver) return;
-		const limit = segmentDurations[attemptCount];
-		currentPosition = 0;
 		widget.seekTo(0);
 		widget.play();
 	}
@@ -208,6 +220,10 @@
 	function togglePlayPause() {
 		if (!widgetReady || gameOver) return;
 		isPlaying ? widget.pause() : playSegment();
+	}
+
+	function toggleDark() {
+		darkMode = !darkMode;
 	}
 
 	function skipIntro() {
@@ -333,9 +349,9 @@
 <div
 	class="fixed inset-0 flex flex-col overflow-hidden"
 	style="
-    background: {COLORS.background};
-    color: {COLORS.text};
-    font-family: 'Inter', sans-serif;
+    background: {darkMode ? COLORS.text : COLORS.background};
+    color:      {darkMode ? COLORS.background : COLORS.text};
+    font-family:'Inter', sans-serif
   "
 >
 	<!-- header -->
@@ -343,14 +359,21 @@
 		<button on:click={() => (showInfo = true)}>
 			<Icon src={InformationCircle} class="h-6 w-6" style="color: {COLORS.primary}" />
 		</button>
-		<h1 class="flex-grow text-center font-serif text-3xl font-bold">
+
+		<h1 class="flex-1 text-center font-serif text-lg font-bold whitespace-nowrap sm:text-3xl">
 			Heardle – {ARTIST_NAME}
 		</h1>
-		<button on:click={() => (showHowTo = true)}>
-			<Icon src={QuestionMarkCircle} class="h-6 w-6" style="color: {COLORS.accent}" />
-		</button>
+
+		<div class="flex items-center space-x-2">
+			<button on:click={toggleDark}>
+				<Icon src={darkMode ? Sun : Moon} class="h-6 w-6" style="color: {COLORS.primary}" />
+			</button>
+			<button on:click={() => (showHowTo = true)}>
+				<Icon src={QuestionMarkCircle} class="h-6 w-6" style="color: {COLORS.accent}" />
+			</button>
+		</div>
 	</div>
-	<hr class="mx-4 my-3" style="border-color: {COLORS.text}" />
+	<hr class="mx-4 my-3" style="border-color: {darkMode ? COLORS.background : COLORS.text}" />
 
 	<!-- attempts -->
 	<div class="mb-6 flex-shrink-0 space-y-2 px-4">
@@ -358,19 +381,19 @@
 			<div
 				class="flex h-12 items-center rounded border px-3 font-semibold"
 				style="
-          border-color:
-            {info.status === 'skip'
+					border-color:
+						{info.status === 'skip'
 					? COLORS.primary
 					: info.status === 'wrong'
 						? COLORS.accent
 						: COLORS.secondary};
-          color:
-            {info.status === 'skip'
+					color:
+						{info.status === 'skip'
 					? COLORS.primary
 					: info.status === 'wrong'
 						? COLORS.accent
 						: COLORS.secondary};
-        "
+				"
 			>
 				{#if info.status === 'skip'}▢ Skipped
 				{:else if info.status === 'wrong'}☒ {info.title}
@@ -378,7 +401,10 @@
 			</div>
 		{/each}
 		{#each Array(maxAttempts - attemptInfos.length) as _}
-			<div class="h-12 rounded border" style="border-color: {COLORS.text}"></div>
+			<div
+				class="h-12 rounded border"
+				style="border-color: {darkMode ? COLORS.background : COLORS.text}"
+			></div>
 		{/each}
 	</div>
 
@@ -394,19 +420,26 @@
 	<div class="mb-4 flex-shrink-0 px-4">
 		<div
 			class="relative w-full overflow-hidden rounded border"
-			style="height: 1.25rem; border-color: {COLORS.text}"
+			style="
+				height: 1.25rem;
+				border-color: {darkMode ? COLORS.background : COLORS.text}
+			"
 		>
 			<div
 				class="absolute top-0 left-0 h-full"
-				style="width: {fillPercent}%; background: {COLORS.primary}; transition: width 0.1s;"
+				style="
+					width: {fillPercent}%;
+					background: {COLORS.primary};
+					transition: width 0.1s;
+				"
 			></div>
 			{#each boundaries as b}
 				<div
 					class="absolute top-0 bottom-0"
 					style="
-            left: {(b / TOTAL_SECONDS) * 100}%;
-            border-left: 1px solid {COLORS.text};
-          "
+						left: {(b / TOTAL_SECONDS) * 100}%;
+						border-left: 1px solid {darkMode ? COLORS.background : COLORS.text};
+					"
 				></div>
 			{/each}
 		</div>
@@ -438,25 +471,25 @@
 				on:keydown={onInputKeydown}
 				class="w-full rounded border px-3 py-2"
 				style="
-          border-color: {COLORS.primary};
-          background: {COLORS.background};
-          color: {COLORS.text};
-        "
+					border-color: {COLORS.primary};
+					background:    {darkMode ? COLORS.text : COLORS.background};
+					color:         {darkMode ? COLORS.background : COLORS.text};
+				"
 			/>
 			{#if suggestions.length}
 				<ul
 					class="mt-1 max-h-36 overflow-y-auto rounded border"
 					style="
-            border-color: {COLORS.text};
-            background: {COLORS.background};
-          "
+						border-color: {darkMode ? COLORS.background : COLORS.text};
+						background:    {darkMode ? COLORS.text : COLORS.background};
+					"
 				>
 					{#each suggestions as s}
 						<li>
 							<button
 								type="button"
 								class="w-full px-3 py-2 text-left"
-								style="color: {COLORS.text}"
+								style="color: {darkMode ? COLORS.background : COLORS.text}"
 								on:click={() => selectSuggestion(s)}
 							>
 								{s.title} – <span style="opacity: 0.7">{s.artist}</span>
@@ -488,7 +521,10 @@
 			</button>
 		</div>
 	{:else}
-		<div class="mt-6 text-center text-lg" style="color: {COLORS.text}">
+		<div
+			class="mt-6 text-center text-lg"
+			style="color: {darkMode ? COLORS.background : COLORS.text}"
+		>
 			{message}
 		</div>
 	{/if}

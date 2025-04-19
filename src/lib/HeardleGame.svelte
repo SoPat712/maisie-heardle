@@ -129,7 +129,7 @@
 		url: `https://soundcloud.com/${SC_USER}/${slug}`
 	}));
 
-	// ─── DAILY‐SEEDED RANDOM TRACK ───────────────────────────────────────────────
+	// ─── SEED & PICK TRACK ────────────────────────────────────────────────────────
 	let seed = parseInt(moment().format('YYYYMMDD'), 10);
 	function seededRandom() {
 		seed = (seed * 9301 + 49297) % 233280;
@@ -139,16 +139,16 @@
 
 	// ─── SEGMENTS ───────────────────────────────────────────────────────────────
 	const SEGMENT_INCREMENTS = [2, 1, 2, 3, 4, 5];
-	const segmentDurations = SEGMENT_INCREMENTS.reduce<number[]>((acc, inc) => {
-		acc.push((acc.at(-1) ?? 0) + inc * 1000);
-		return acc;
+	const segmentDurations = SEGMENT_INCREMENTS.reduce<number[]>((a, inc) => {
+		a.push((a.at(-1) ?? 0) + inc * 1000);
+		return a;
 	}, []);
 	const TOTAL_MS = segmentDurations.at(-1)!;
 	const TOTAL_SECONDS = TOTAL_MS / 1000;
 	const maxAttempts = SEGMENT_INCREMENTS.length;
 	$: boundaries = segmentDurations.map((ms) => ms / 1000).slice(0, -1);
 
-	// ─── GAME STATE & PLAYER TIMERS ──────────────────────────────────────────────
+	// ─── STATE & TIMERS ─────────────────────────────────────────────────────────
 	type Info = { status: 'skip' | 'wrong' | 'correct'; title?: string };
 	let attemptInfos: Info[] = [];
 	let attemptCount = 0;
@@ -158,10 +158,12 @@
 	let iframeElement: HTMLIFrameElement;
 	let widget: any;
 	let widgetReady = false;
+	let artworkUrl = '';
 	let isPlaying = false;
 	let currentPosition = 0;
 	let snippetTimeout: ReturnType<typeof setTimeout>;
 	let progressInterval: ReturnType<typeof setInterval>;
+	let fullDuration = 0;
 
 	let showHowTo = false;
 	let showInfo = false;
@@ -174,10 +176,27 @@
 	let selectedTrack: Track | null = null;
 	let inputEl: HTMLInputElement;
 
+	// ─── COUNTDOWN ───────────────────────────────────────────────────────────────
+	let timeLeft = '';
+	let countdownInterval: ReturnType<typeof setInterval>;
+	function updateTime() {
+		const now = new Date();
+		const midnight = new Date(now);
+		midnight.setHours(24, 0, 0, 0);
+		const diff = midnight.getTime() - now.getTime();
+		const h = String(Math.floor(diff / 3600000)).padStart(2, '0');
+		const m = String(Math.floor((diff % 3600000) / 60000)).padStart(2, '0');
+		const s = String(Math.floor((diff % 60000) / 1000)).padStart(2, '0');
+		timeLeft = `${h}:${m}:${s}`;
+	}
+
 	$: suggestions = userInput
 		? tracks.filter((t) => t.title.toLowerCase().includes(userInput.toLowerCase())).slice(0, 5)
 		: [];
-	$: fillPercent = (currentPosition / TOTAL_MS) * 100;
+	// switch fill% between snippet & full track
+	$: fillPercent = gameOver
+		? (currentPosition / fullDuration) * 100
+		: (currentPosition / TOTAL_MS) * 100;
 	$: nextIncrementSec =
 		attemptCount < SEGMENT_INCREMENTS.length - 1 ? SEGMENT_INCREMENTS[attemptCount + 1] : 0;
 
@@ -191,7 +210,7 @@
 		clearInterval(progressInterval);
 		progressInterval = setInterval(() => {
 			widget.getPosition((pos: number) => {
-				const limit = segmentDurations[attemptCount];
+				const limit = gameOver ? fullDuration : segmentDurations[attemptCount];
 				currentPosition = Math.min(pos, limit);
 			});
 		}, 100);
@@ -204,20 +223,34 @@
 	}
 
 	onMount(() => {
-		const mq = window.matchMedia('(prefers-color-scheme: dark)');
-		mq.addEventListener('change', (e) => (darkMode = e.matches));
+		// dark‑mode listener
+		window
+			.matchMedia('(prefers-color-scheme: dark)')
+			.addEventListener('change', (e) => (darkMode = e.matches));
 
+		// countdown
+		updateTime();
+		countdownInterval = setInterval(updateTime, 1000);
+
+		// SoundCloud widget
 		widget = SC.Widget(iframeElement);
-		widget.bind(SC.Widget.Events.READY, () => (widgetReady = true));
-
+		widget.bind(SC.Widget.Events.READY, () => {
+			widgetReady = true;
+			widget.getDuration((d: number) => (fullDuration = d));
+			widget.getCurrentSound((sound: any) => {
+				artworkUrl = sound.artwork_url || '';
+			});
+		});
 		widget.bind(SC.Widget.Events.PLAY, () => {
 			startPolling();
-			snippetTimeout = setTimeout(() => widget.pause(), segmentDurations[attemptCount]);
+			if (!gameOver) {
+				snippetTimeout = setTimeout(() => widget.pause(), segmentDurations[attemptCount]);
+			}
 		});
 		widget.bind(SC.Widget.Events.PAUSE, stopAllTimers);
 		widget.bind(SC.Widget.Events.FINISH, stopAllTimers);
 		widget.bind(SC.Widget.Events.PLAY_PROGRESS, (e: { currentPosition: number }) => {
-			const limit = segmentDurations[attemptCount];
+			const limit = gameOver ? fullDuration : segmentDurations[attemptCount];
 			if (e.currentPosition >= limit) {
 				currentPosition = limit;
 				widget.pause();
@@ -229,18 +262,19 @@
 
 	onDestroy(() => {
 		stopAllTimers();
+		clearInterval(countdownInterval);
 		widget?.unbind && Object.values(SC.Widget.Events).forEach((ev) => widget.unbind(ev));
 	});
 
 	function playSegment() {
-		if (!widgetReady || gameOver) return;
+		if (!widgetReady) return;
 		currentPosition = 0;
 		widget.seekTo(0);
 		widget.play();
 	}
 
 	function togglePlayPause() {
-		if (!widgetReady || gameOver) return;
+		if (!widgetReady) return;
 		isPlaying ? widget.pause() : playSegment();
 	}
 
@@ -305,31 +339,24 @@
 <!-- How to Play Modal -->
 {#if showHowTo}
 	<div class="fixed inset-0 z-50 flex items-center justify-center">
-		<div class="absolute inset-0" style="background: rgba(0,0,0,0.4)"></div>
+		<div class="absolute inset-0 bg-black/40"></div>
 		<div
 			class="relative w-4/5 max-w-md rounded-lg p-8 text-center"
 			style="background: {COLORS.background}"
 		>
-			<h2
-				class="mb-4 text-2xl font-bold uppercase"
-				style="color: {COLORS.primary}; font-family: 'Inter', sans-serif"
-			>
-				How to Play
-			</h2>
+			<h2 class="mb-4 text-2xl font-bold uppercase" style="color: {COLORS.primary}">How to Play</h2>
 			<ul class="space-y-4 text-base" style="color: {COLORS.text}">
 				<li>🎵 Play the snippet.</li>
 				<li>🔊 Skips & wrongs unlock more.</li>
 				<li>👍 Guess in as few tries as possible!</li>
 			</ul>
-			<div class="mt-6 flex justify-center">
-				<button
-					class="rounded px-6 py-2 font-semibold"
-					style="background: {COLORS.primary}; color: {COLORS.background}"
-					on:click={() => (showHowTo = false)}
-				>
-					Close
-				</button>
-			</div>
+			<button
+				class="mt-6 rounded px-6 py-2 font-semibold"
+				style="background: {COLORS.primary}; color: {COLORS.background}"
+				on:click={() => (showHowTo = false)}
+			>
+				Close
+			</button>
 		</div>
 	</div>
 {/if}
@@ -337,98 +364,112 @@
 <!-- Info Modal -->
 {#if showInfo}
 	<div class="fixed inset-0 z-50 flex items-center justify-center">
-		<div class="absolute inset-0" style="background: rgba(0,0,0,0.4)"></div>
+		<div class="absolute inset-0 bg-black/40"></div>
 		<div
 			class="relative w-4/5 max-w-md space-y-4 rounded-lg p-8"
-			style="background: {COLORS.background}; color: {COLORS.text}"
+			style="background:{COLORS.background};color:{COLORS.text}"
 		>
-			<p class="text-base font-semibold">
-				{ARTIST_NAME} – Test your {ARTIST_NAME} knowledge!
+			<p class="font-semibold">{ARTIST_NAME} – Test your knowledge!</p>
+			<p>All songs used are copyrighted and belong to {ARTIST_NAME}.</p>
+			<hr class="my-4" style="border-color:{COLORS.text}" />
+			<p class="text-xs" style="color:{COLORS.accent}">
+				Prepared with SoundCloud, Svelte, Tailwind CSS, Inter font, svelte-hero-icons
+				<br />
+				<br />
+				Game version: 1.2.0
 			</p>
-			<p class="text-base">
-				All songs used are copyrighted and belong to {ARTIST_NAME}.
-			</p>
-			<hr style="border-color: {COLORS.text}" class="my-4" />
-			<p class="text-xs" style="color: {COLORS.accent}">
-				Prepared with SoundCloud, Svelte, Tailwind, Inter font,<br />
-				svelte‑hero‑icons
-			</p>
-			<p class="text-xs" style="color: {COLORS.accent}">Game version: 1.0.0</p>
-			<div class="mt-4 flex justify-center">
-				<button
-					class="rounded px-6 py-2 font-semibold"
-					style="background: {COLORS.primary}; color: {COLORS.background}"
-					on:click={() => (showInfo = false)}
-				>
-					Close
-				</button>
-			</div>
+			<p class="text-sm italic">New track in <strong>{timeLeft}</strong></p>
+			<button
+				class="mt-4 rounded px-6 py-2 font-semibold"
+				style="background:{COLORS.primary};color:{COLORS.background}"
+				on:click={() => (showInfo = false)}
+			>
+				Close
+			</button>
 		</div>
 	</div>
 {/if}
 
-<!-- Main UI anchored to viewport -->
+<!-- Main UI -->
 <div
 	class="fixed inset-0 flex flex-col overflow-hidden"
-	style="
-    background: {darkMode ? COLORS.text : COLORS.background};
-    color:      {darkMode ? COLORS.background : COLORS.text};
-    font-family:'Inter', sans-serif
-  "
+	style="background:{darkMode ? COLORS.text : COLORS.background};color:{darkMode
+		? COLORS.background
+		: COLORS.text}"
 >
-	<!-- header -->
+	<!-- Header -->
 	<div class="flex items-center justify-between px-4 pt-4">
-		<button on:click={() => (showInfo = true)}>
-			<Icon src={InformationCircle} class="h-6 w-6" style="color: {COLORS.primary}" />
-		</button>
-
+		<div class="flex space-x-2">
+			<button on:click={() => (showInfo = true)}>
+				<Icon src={InformationCircle} class="h-6 w-6" style="color:{COLORS.primary}" />
+			</button>
+			<button on:click={toggleDark}>
+				<Icon src={darkMode ? Sun : Moon} class="h-6 w-6" style="color:{COLORS.primary}" />
+			</button>
+		</div>
 		<h1 class="flex-1 text-center font-serif text-lg font-bold whitespace-nowrap sm:text-3xl">
 			Heardle – {ARTIST_NAME}
 		</h1>
+		<button on:click={() => (showHowTo = true)}>
+			<Icon src={QuestionMarkCircle} class="h-6 w-6" style="color:{COLORS.accent}" />
+		</button>
+	</div>
+	<hr class="mx-4 my-3" style="border-color:{darkMode ? COLORS.background : COLORS.text}" />
 
-		<div class="flex items-center space-x-2">
-			<button on:click={toggleDark}>
-				<Icon src={darkMode ? Sun : Moon} class="h-6 w-6" style="color: {COLORS.primary}" />
-			</button>
-			<button on:click={() => (showHowTo = true)}>
-				<Icon src={QuestionMarkCircle} class="h-6 w-6" style="color: {COLORS.accent}" />
-			</button>
+	<!-- Attempts -->
+	{#if !gameOver}
+		<div class="mb-6 space-y-2 px-4">
+			{#each attemptInfos as info}
+				<div
+					class="flex h-12 items-center rounded border px-3 font-semibold"
+					style="border-color:{info.status === 'skip'
+						? COLORS.primary
+						: info.status === 'wrong'
+							? COLORS.accent
+							: COLORS.secondary};color:{info.status === 'skip'
+						? COLORS.primary
+						: info.status === 'wrong'
+							? COLORS.accent
+							: COLORS.secondary}"
+				>
+					{#if info.status === 'skip'}▢ Skipped
+					{:else if info.status === 'wrong'}☒ {info.title}
+					{:else}✓ {info.title}{/if}
+				</div>
+			{/each}
+			{#each Array(maxAttempts - attemptInfos.length) as _}
+				<div
+					class="h-12 rounded border"
+					style="border-color:{darkMode ? COLORS.background : COLORS.text}"
+				></div>
+			{/each}
 		</div>
-	</div>
-	<hr class="mx-4 my-3" style="border-color: {darkMode ? COLORS.background : COLORS.text}" />
+	{/if}
 
-	<!-- attempts -->
-	<div class="mb-6 flex-shrink-0 space-y-2 px-4">
-		{#each attemptInfos as info}
-			<div
-				class="flex h-12 items-center rounded border px-3 font-semibold"
-				style="
-					border-color:
-						{info.status === 'skip'
-					? COLORS.primary
-					: info.status === 'wrong'
-						? COLORS.accent
-						: COLORS.secondary};
-					color:
-						{info.status === 'skip'
-					? COLORS.primary
-					: info.status === 'wrong'
-						? COLORS.accent
-						: COLORS.secondary};
-				"
+	<!-- Win/Lose Card -->
+	{#if gameOver}
+		<div class="mb-6 px-4">
+			<a
+				href={currentTrack.url}
+				target="_blank"
+				rel="noopener"
+				class="flex items-center overflow-hidden rounded-lg border-2 hover:bg-gray-100"
+				style="border-color:{COLORS.primary}"
 			>
-				{#if info.status === 'skip'}▢ Skipped
-				{:else if info.status === 'wrong'}☒ {info.title}
-				{:else}✓ {info.title}{/if}
-			</div>
-		{/each}
-		{#each Array(maxAttempts - attemptInfos.length) as _}
-			<div
-				class="h-12 rounded border"
-				style="border-color: {darkMode ? COLORS.background : COLORS.text}"
-			></div>
-		{/each}
-	</div>
+				{#if artworkUrl}
+					<img
+						src={artworkUrl.replace('-large', '-t500x500')}
+						alt="{currentTrack.title} cover"
+						class="h-16 w-16 flex-shrink-0 object-cover"
+					/>
+				{/if}
+				<div class="px-4 py-2">
+					<div class="font-semibold" style="color:{COLORS.primary}">{currentTrack.title}</div>
+					<div class="text-sm" style="color:{COLORS.accent}">{ARTIST_NAME}</div>
+				</div>
+			</a>
+		</div>
+	{/if}
 
 	<iframe
 		bind:this={iframeElement}
@@ -438,118 +479,99 @@
 		title="preview player"
 	></iframe>
 
-	<!-- hollow progress bar -->
-	<div class="mb-4 flex-shrink-0 px-4">
+	<!-- Bottom‐pinned controls -->
+	<div class="mt-auto px-4 pb-4">
+		<!-- Progress bar -->
 		<div
-			class="relative w-full overflow-hidden rounded border"
-			style="
-				height: 1.25rem;
-				border-color: {darkMode ? COLORS.background : COLORS.text}
-			"
+			class="relative mb-2 w-full overflow-hidden rounded border"
+			style="height:1.25rem;border-color:{darkMode ? COLORS.background : COLORS.text}"
 		>
 			<div
-				class="absolute top-0 left-0 h-full"
-				style="
-					width: {fillPercent}%;
-					background: {COLORS.primary};
-					transition: width 0.1s;
-				"
+				class="absolute top-0 left-0 h-full transition-[width] duration-100"
+				style="width:{fillPercent}%;background:{COLORS.primary}"
 			></div>
-			{#each boundaries as b}
-				<div
-					class="absolute top-0 bottom-0"
-					style="
-						left: {(b / TOTAL_SECONDS) * 100}%;
-						border-left: 1px solid {darkMode ? COLORS.background : COLORS.text};
-					"
-				></div>
-			{/each}
-		</div>
-		<div class="mt-1 flex justify-between text-xs">
-			<span>{formatTime(currentPosition)}</span>
-			<span>{formatTime(TOTAL_MS)}</span>
-		</div>
-	</div>
-
-	<!-- play/pause -->
-	<div class="mb-4 flex justify-center">
-		<button
-			on:click={togglePlayPause}
-			class="flex h-16 w-16 items-center justify-center rounded-full border-2 disabled:opacity-50"
-			style="border-color: {COLORS.primary}"
-		>
-			<Icon src={isPlaying ? Pause : Play} class="h-8 w-8" style="color: {COLORS.primary}" solid />
-		</button>
-	</div>
-
-	<!-- guess & skip/submit or final -->
-	{#if !gameOver}
-		<div class="mb-4 flex-shrink-0 px-4">
-			<input
-				bind:this={inputEl}
-				type="text"
-				placeholder="Type song title…"
-				bind:value={userInput}
-				on:keydown={onInputKeydown}
-				class="w-full rounded border px-3 py-2"
-				style="
-					border-color: {COLORS.primary};
-					background:    {darkMode ? COLORS.text : COLORS.background};
-					color:         {darkMode ? COLORS.background : COLORS.text};
-				"
-			/>
-			{#if suggestions.length}
-				<ul
-					class="mt-1 max-h-36 overflow-y-auto rounded border"
-					style="
-						border-color: {darkMode ? COLORS.background : COLORS.text};
-						background:    {darkMode ? COLORS.text : COLORS.background};
-					"
-				>
-					{#each suggestions as s}
-						<li>
-							<button
-								type="button"
-								class="w-full px-3 py-2 text-left"
-								style="color: {darkMode ? COLORS.background : COLORS.text}"
-								on:click={() => selectSuggestion(s)}
-							>
-								{s.title} – <span style="opacity: 0.7">{s.artist}</span>
-							</button>
-						</li>
-					{/each}
-				</ul>
+			{#if !gameOver}
+				{#each boundaries as b}
+					<div
+						class="absolute top-0 bottom-0"
+						style="left:{(b / TOTAL_SECONDS) * 100}%;border-left:1px solid {darkMode
+							? COLORS.background
+							: COLORS.text}"
+					></div>
+				{/each}
 			{/if}
 		</div>
-		<div class="mb-6 flex justify-between px-4">
+		<div class="mb-4 flex justify-between text-xs">
+			<span>{formatTime(currentPosition)}</span>
+			<span>{formatTime(gameOver ? fullDuration : TOTAL_MS)}</span>
+		</div>
+
+		<!-- Play/Pause -->
+		<div class="mb-4 flex justify-center">
 			<button
-				on:click={skipIntro}
-				class="rounded px-4 py-2 font-semibold"
-				style="background: {COLORS.primary}; color: {COLORS.background}"
+				on:click={togglePlayPause}
+				class="flex h-16 w-16 items-center justify-center rounded-full border-2 disabled:opacity-50"
+				style="border-color:{COLORS.primary}"
 			>
-				{#if nextIncrementSec > 0}
-					Skip (+{nextIncrementSec}s)
-				{:else}
-					I don't know it
+				<Icon src={isPlaying ? Pause : Play} class="h-8 w-8" style="color:{COLORS.primary}" />
+			</button>
+		</div>
+
+		<!-- Guess & Skip/Submit -->
+		{#if !gameOver}
+			<div class="mb-4">
+				<input
+					bind:this={inputEl}
+					type="text"
+					placeholder="Type song title…"
+					bind:value={userInput}
+					on:keydown={onInputKeydown}
+					class="w-full rounded border px-3 py-2"
+					style="border-color:{COLORS.primary};background:{darkMode
+						? COLORS.text
+						: COLORS.background};color:{darkMode ? COLORS.background : COLORS.text}"
+				/>
+				{#if suggestions.length}
+					<ul
+						class="mt-1 max-h-36 overflow-y-auto rounded border"
+						style="border-color:{darkMode ? COLORS.background : COLORS.text};background:{darkMode
+							? COLORS.text
+							: COLORS.background}"
+					>
+						{#each suggestions as s}
+							<li>
+								<button
+									type="button"
+									class="w-full px-3 py-2 text-left"
+									style="color:{darkMode ? COLORS.background : COLORS.text}"
+									on:click={() => selectSuggestion(s)}
+								>
+									{s.title} – <span style="opacity:0.7">{s.artist}</span>
+								</button>
+							</li>
+						{/each}
+					</ul>
 				{/if}
-			</button>
-			<button
-				on:click={submitGuess}
-				class="rounded px-4 py-2 font-semibold"
-				style="background: {COLORS.accent}; color: {COLORS.background}"
-				disabled={!selectedTrack}
-			>
-				Submit
-			</button>
-		</div>
-	{:else}
-		<div
-			class="mt-6 text-center text-lg"
-			style="color: {darkMode ? COLORS.background : COLORS.text}"
-		>
-			{message}
-		</div>
-	{/if}
+			</div>
+			<div class="flex justify-between">
+				<button
+					on:click={skipIntro}
+					class="rounded px-4 py-2 font-semibold"
+					style="background:{COLORS.primary};color:{COLORS.background}"
+				>
+					{#if nextIncrementSec > 0}Skip (+{nextIncrementSec}s){:else}I don't know it{/if}
+				</button>
+				<button
+					on:click={submitGuess}
+					class="rounded px-4 py-2 font-semibold"
+					style="background:{COLORS.accent};color:{COLORS.background}"
+					disabled={!selectedTrack}
+				>
+					Submit
+				</button>
+			</div>
+		{/if}
+	</div>
 </div>
 
 <style>

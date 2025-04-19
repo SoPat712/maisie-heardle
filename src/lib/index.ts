@@ -1,1 +1,2 @@
-// place files you want to import through the `$lib` alias in this folder.
+// src/lib/index.ts
+export { default as HeardleGame } from './HeardleGame.svelte';

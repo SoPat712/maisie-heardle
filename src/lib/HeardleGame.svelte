@@ -135,7 +135,7 @@
 		seed = (seed * 9301 + 49297) % 233280;
 		return seed / 233280;
 	}
-	let currentTrack: Track = tracks[Math.floor(seededRandom() * tracks.length)];
+	let currentTrack = tracks[Math.floor(seededRandom() * tracks.length)];
 
 	// ─── SEGMENTS ───────────────────────────────────────────────────────────────
 	const SEGMENT_INCREMENTS = [2, 1, 2, 3, 4, 5];
@@ -148,7 +148,7 @@
 	const maxAttempts = SEGMENT_INCREMENTS.length;
 	$: boundaries = segmentDurations.map((ms) => ms / 1000).slice(0, -1);
 
-	// ─── GAME STATE ─────────────────────────────────────────────────────────────
+	// ─── GAME STATE & PLAYER TIMERS ──────────────────────────────────────────────
 	type Info = { status: 'skip' | 'wrong' | 'correct'; title?: string };
 	let attemptInfos: Info[] = [];
 	let attemptCount = 0;
@@ -160,6 +160,8 @@
 	let widgetReady = false;
 	let isPlaying = false;
 	let currentPosition = 0;
+	let snippetTimeout: ReturnType<typeof setTimeout>;
+	let progressInterval: ReturnType<typeof setInterval>;
 
 	let showHowTo = false;
 	let showInfo = false;
@@ -175,7 +177,6 @@
 	$: suggestions = userInput
 		? tracks.filter((t) => t.title.toLowerCase().includes(userInput.toLowerCase())).slice(0, 5)
 		: [];
-
 	$: fillPercent = (currentPosition / TOTAL_MS) * 100;
 	$: nextIncrementSec =
 		attemptCount < SEGMENT_INCREMENTS.length - 1 ? SEGMENT_INCREMENTS[attemptCount + 1] : 0;
@@ -185,6 +186,23 @@
 		return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 	}
 
+	function startPolling() {
+		isPlaying = true;
+		clearInterval(progressInterval);
+		progressInterval = setInterval(() => {
+			widget.getPosition((pos: number) => {
+				const limit = segmentDurations[attemptCount];
+				currentPosition = Math.min(pos, limit);
+			});
+		}, 100);
+	}
+
+	function stopAllTimers() {
+		isPlaying = false;
+		clearInterval(progressInterval);
+		clearTimeout(snippetTimeout);
+	}
+
 	onMount(() => {
 		const mq = window.matchMedia('(prefers-color-scheme: dark)');
 		mq.addEventListener('change', (e) => (darkMode = e.matches));
@@ -192,27 +210,31 @@
 		widget = SC.Widget(iframeElement);
 		widget.bind(SC.Widget.Events.READY, () => (widgetReady = true));
 
+		widget.bind(SC.Widget.Events.PLAY, () => {
+			startPolling();
+			snippetTimeout = setTimeout(() => widget.pause(), segmentDurations[attemptCount]);
+		});
+		widget.bind(SC.Widget.Events.PAUSE, stopAllTimers);
+		widget.bind(SC.Widget.Events.FINISH, stopAllTimers);
 		widget.bind(SC.Widget.Events.PLAY_PROGRESS, (e: { currentPosition: number }) => {
 			const limit = segmentDurations[attemptCount];
 			if (e.currentPosition >= limit) {
 				currentPosition = limit;
 				widget.pause();
-				isPlaying = false;
 			} else {
 				currentPosition = e.currentPosition;
 			}
 		});
-
-		widget.bind(SC.Widget.Events.PLAY, () => (isPlaying = true));
-		widget.bind(SC.Widget.Events.PAUSE, () => (isPlaying = false));
 	});
 
 	onDestroy(() => {
+		stopAllTimers();
 		widget?.unbind && Object.values(SC.Widget.Events).forEach((ev) => widget.unbind(ev));
 	});
 
 	function playSegment() {
 		if (!widgetReady || gameOver) return;
+		currentPosition = 0;
 		widget.seekTo(0);
 		widget.play();
 	}

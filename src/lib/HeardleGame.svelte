@@ -190,19 +190,20 @@
 		timeLeft = `${h}:${m}:${s}`;
 	}
 
-	$: suggestions = userInput
-		? tracks.filter((t) => t.title.toLowerCase().includes(userInput.toLowerCase())).slice(0, 5)
-		: [];
-	// switch fill% between snippet & full track
-	$: fillPercent = gameOver
-		? (currentPosition / fullDuration) * 100
-		: (currentPosition / TOTAL_MS) * 100;
+	// ─── CLAMPED FILL PERCENT & NEXT SEGMENT ─────────────────────────────────────
+	let fillPercent = 0;
+	$: {
+		const raw = gameOver
+			? (currentPosition / fullDuration) * 100
+			: (currentPosition / TOTAL_MS) * 100;
+		fillPercent = raw > 100 ? 100 : raw;
+	}
 	$: nextIncrementSec =
 		attemptCount < SEGMENT_INCREMENTS.length - 1 ? SEGMENT_INCREMENTS[attemptCount + 1] : 0;
 
 	function formatTime(ms: number) {
 		const s = Math.floor(ms / 1000);
-		return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+		return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '00')}`;
 	}
 
 	function startPolling() {
@@ -227,11 +228,9 @@
 		window
 			.matchMedia('(prefers-color-scheme: dark)')
 			.addEventListener('change', (e) => (darkMode = e.matches));
-
 		// countdown
 		updateTime();
 		countdownInterval = setInterval(updateTime, 1000);
-
 		// SoundCloud widget
 		widget = SC.Widget(iframeElement);
 		widget.bind(SC.Widget.Events.READY, () => {
@@ -242,14 +241,29 @@
 			});
 		});
 		widget.bind(SC.Widget.Events.PLAY, () => {
+			// startPolling();
+			// if (!gameOver) {
+			// 	snippetTimeout = setTimeout(() => widget.pause(), segmentDurations[attemptCount]);
+			// }
 			startPolling();
 			if (!gameOver) {
-				snippetTimeout = setTimeout(() => widget.pause(), segmentDurations[attemptCount]);
+				snippetTimeout = setTimeout(() => {
+					widget.pause();
+					// snap exactly to the end of this snippet
+					currentPosition = segmentDurations[attemptCount];
+				}, segmentDurations[attemptCount]);
 			}
 		});
 		widget.bind(SC.Widget.Events.PAUSE, stopAllTimers);
-		widget.bind(SC.Widget.Events.FINISH, stopAllTimers);
+		widget.bind(SC.Widget.Events.FINISH, () => {
+			// ensure we hit the very end
+			currentPosition = gameOver ? fullDuration : segmentDurations[attemptCount];
+			stopAllTimers();
+		});
 		widget.bind(SC.Widget.Events.PLAY_PROGRESS, (e: { currentPosition: number }) => {
+			// only update while actually playing
+			if (!isPlaying) return;
+
 			const limit = gameOver ? fullDuration : segmentDurations[attemptCount];
 			if (e.currentPosition >= limit) {
 				currentPosition = limit;
@@ -263,7 +277,9 @@
 	onDestroy(() => {
 		stopAllTimers();
 		clearInterval(countdownInterval);
-		widget?.unbind && Object.values(SC.Widget.Events).forEach((ev) => widget.unbind(ev));
+		if (widget?.unbind) {
+			Object.values(SC.Widget.Events).forEach((ev) => widget.unbind(ev));
+		}
 	});
 
 	function playSegment() {
@@ -374,8 +390,7 @@
 			<hr class="my-4" style="border-color:{COLORS.text}" />
 			<p class="text-xs" style="color:{COLORS.accent}">
 				Prepared with SoundCloud, Svelte, Tailwind CSS, Inter font, svelte-hero-icons
-				<br />
-				<br />
+				<br /><br />
 				Game version: 1.2.0
 			</p>
 			<p class="text-sm italic">New track in <strong>{timeLeft}</strong></p>
@@ -479,7 +494,7 @@
 		title="preview player"
 	></iframe>
 
-	<!-- Bottom‐pinned controls -->
+	<!-- Bottom‑pinned controls -->
 	<div class="mt-auto px-4 pb-4">
 		<!-- Progress bar -->
 		<div
@@ -559,7 +574,11 @@
 					class="rounded px-4 py-2 font-semibold"
 					style="background:{COLORS.primary};color:{COLORS.background}"
 				>
-					{#if nextIncrementSec > 0}Skip (+{nextIncrementSec}s){:else}I don't know it{/if}
+					{#if nextIncrementSec > 0}
+						Skip (+{nextIncrementSec}s)
+					{:else}
+						I don't know it
+					{/if}
 				</button>
 				<button
 					on:click={submitGuess}

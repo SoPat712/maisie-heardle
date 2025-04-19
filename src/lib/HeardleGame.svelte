@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import moment from 'moment';
-	export const ssr = false;
 	import {
 		Icon,
 		Play,

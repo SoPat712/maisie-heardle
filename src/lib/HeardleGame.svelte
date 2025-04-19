@@ -1,11 +1,7 @@
-<script context="module">
-	// disable SSR so that darkMode is determined in the browser before first render
-	export const ssr = false;
-</script>
-
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import moment from 'moment';
+	export const ssr = false;
 	import {
 		Icon,
 		Play,

@@ -309,7 +309,8 @@
 		if (selectedTrack.title.toLowerCase() === ans) {
 			attemptInfos = [...attemptInfos, { status: 'correct', title: currentTrack.title }];
 			gameOver = true;
-			message = `✅ Correct! It was “${currentTrack.title}.”`;
+			// include try count in winning message
+			message = `✅ Correct! It was “${currentTrack.title}.” You got it in ${attemptCount} ${attemptCount === 1 ? 'try' : 'tries'}.`;
 			widget.pause();
 		} else {
 			attemptInfos = [...attemptInfos, { status: 'wrong', title: selectedTrack.title }];
@@ -345,10 +346,11 @@
 		window.scrollTo({ top: 0, behavior: 'smooth' });
 	}
 
-	// update suggestions reactively
-	$: suggestions = userInput
-		? tracks.filter((t) => t.title.toLowerCase().includes(userInput.toLowerCase())).slice(0, 5)
-		: [];
+	// update suggestions reactively, but hide once a track is selected
+	$: suggestions =
+		userInput && !selectedTrack
+			? tracks.filter((t) => t.title.toLowerCase().includes(userInput.toLowerCase())).slice(0, 5)
+			: [];
 </script>
 
 <!-- How to Play Modal -->
@@ -482,6 +484,8 @@
 					<div class="text-sm" style="color:{COLORS.accent}">{ARTIST_NAME}</div>
 				</div>
 			</a>
+			<!-- show win/lose message here -->
+			<p class="mt-4 text-center font-medium">{message}</p>
 		</div>
 	{/if}
 

@@ -328,7 +328,11 @@
 		if (selectedTrack.title.toLowerCase() === ans) {
 			attemptInfos = [...attemptInfos, { status: 'correct', title: currentTrack.title }];
 			gameOver = true;
-			message = `✅ Correct! It was “${currentTrack.title}.” You got it in ${attemptCount} ${attemptCount === 1 ? 'try' : 'tries'}.`;
+			message = `✅ Correct! It was ${currentTrack.title}. You got it ${
+				attemptCount === maxAttempts
+					? 'on the last try! Close one!'
+					: `in ${attemptCount} ${attemptCount === 1 ? 'try' : 'tries'}.`
+			}`;
 			widget.pause();
 		} else {
 			attemptInfos = [...attemptInfos, { status: 'wrong', title: selectedTrack.title }];
@@ -603,7 +607,7 @@
 				<button
 					on:click={() => {
 						submitGuess();
-						togglePlayPause();
+						// togglePlayPause();
 					}}
 					class="rounded px-4 py-2 font-semibold"
 					style="background:{COLORS.secondary};color:{COLORS.background}"

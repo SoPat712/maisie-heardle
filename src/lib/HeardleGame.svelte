@@ -273,7 +273,7 @@
 				widget.seekTo(0);
 				loading = false;
 				widgetReady = true;
-			}, 1500);
+			}, 1000);
 		});
 
 		widget.bind(SC.Widget.Events.PLAY, () => {

@@ -158,11 +158,10 @@
 	let iframeElement: HTMLIFrameElement;
 	let widget: any;
 	let widgetReady = false;
-	let loading = true;
+	let loading = true; // disable play until warmed up
 	let artworkUrl = '';
 	let isPlaying = false;
 	let currentPosition = 0;
-	let snippetTimeout: ReturnType<typeof setTimeout>;
 	let progressInterval: ReturnType<typeof setInterval>;
 	let fullDuration = 0;
 
@@ -210,29 +209,18 @@
 	function startPolling() {
 		isPlaying = true;
 		clearInterval(progressInterval);
-		clearTimeout(snippetTimeout);
 
+		// progress updater—fires reliably on mobile
 		progressInterval = setInterval(() => {
 			widget.getPosition((pos: number) => {
-				const limit = gameOver ? fullDuration : segmentDurations[attemptCount];
-				currentPosition = Math.min(pos, limit);
+				currentPosition = pos;
 			});
 		}, 100);
-
-		if (!gameOver) {
-			// +100ms fudge so we never cut off at 1.999s instead of 2s
-			const clampMs = segmentDurations[attemptCount] + 100;
-			snippetTimeout = setTimeout(() => {
-				widget.pause();
-				currentPosition = segmentDurations[attemptCount];
-			}, clampMs);
-		}
 	}
 
 	function stopAllTimers() {
 		isPlaying = false;
 		clearInterval(progressInterval);
-		clearTimeout(snippetTimeout);
 	}
 
 	onMount(async () => {
@@ -242,7 +230,7 @@
 				tag.src = 'https://w.soundcloud.com/player/api.js';
 				tag.async = true;
 				tag.onload = () => resolve();
-				tag.onerror = () => reject(new Error('Failed to load SoundCloud API'));
+				tag.onerror = () => reject(new Error('Failed to load SC API'));
 				document.head.appendChild(tag);
 			});
 		}
@@ -261,29 +249,29 @@
 				artworkUrl = sound.artwork_url || '';
 			});
 
+			// warm up
 			setTimeout(() => {
 				widget.play();
 				widget.pause();
 				widget.seekTo(0);
 				loading = false;
 				widgetReady = true;
-			}, 1000);
+			}, 750);
 		});
 
-		// no more PLAY binding here!
 		widget.bind(SC.Widget.Events.PAUSE, stopAllTimers);
 		widget.bind(SC.Widget.Events.FINISH, () => {
-			currentPosition = gameOver ? fullDuration : segmentDurations[attemptCount];
 			stopAllTimers();
 		});
+
 		widget.bind(SC.Widget.Events.PLAY_PROGRESS, (e: { currentPosition: number }) => {
 			if (!isPlaying) return;
 			const limit = gameOver ? fullDuration : segmentDurations[attemptCount];
+			currentPosition = e.currentPosition;
 			if (e.currentPosition >= limit) {
-				currentPosition = limit;
 				widget.pause();
-			} else {
-				currentPosition = e.currentPosition;
+				currentPosition = limit;
+				stopAllTimers();
 			}
 		});
 	});
@@ -319,8 +307,11 @@
 		attemptCount++;
 		userInput = '';
 		selectedTrack = null;
-		if (attemptCount >= maxAttempts) revealAnswer();
-		else playSegment();
+		if (attemptCount >= maxAttempts) {
+			revealAnswer();
+		} else {
+			playSegment();
+		}
 	}
 
 	function submitGuess() {
@@ -519,7 +510,7 @@
 		style="position:absolute; width:0; height:0; border:0; overflow:hidden; visibility:hidden;"
 		allow="autoplay"
 		title="preview player"
-	></iframe>
+	/>
 
 	<!-- Bottom‑pinned controls -->
 	<div class="mt-auto px-4 pb-4">

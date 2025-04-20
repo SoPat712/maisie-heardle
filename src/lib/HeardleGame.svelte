@@ -402,7 +402,7 @@
 			<p class="text-xs" style="color:{COLORS.accent}">
 				Prepared with SoundCloud, Svelte, Tailwind CSS, Inter font, svelte-hero-icons, and moment.js
 				<br /><br />
-				Game version: 1.3.0
+				Game version: 2.0.0
 			</p>
 			<p class="text-sm italic">New track in <strong>{timeLeft}</strong></p>
 			<button

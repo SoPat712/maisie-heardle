@@ -306,9 +306,11 @@
 
 	function playSegment() {
 		if (!widgetReady || loading) return;
+		stopAllTimers();
 		currentPosition = 0;
 		widget.seekTo(0);
 		widget.play();
+		startPolling();
 	}
 
 	function togglePlayPause() {

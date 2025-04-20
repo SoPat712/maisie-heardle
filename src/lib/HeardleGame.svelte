@@ -232,23 +232,21 @@
 		countdownInterval = setInterval(updateTime, 1000);
 
 		widget = SC.Widget(iframeElement);
-		// wait for full page load (or you could just use setTimeout)
-		window.addEventListener('load', () => {
-			widget.bind(SC.Widget.Events.READY, () => {
-				widget.getDuration((d: number) => (fullDuration = d));
-				widget.getCurrentSound((sound: any) => {
-					artworkUrl = sound.artwork_url || '';
-				});
-
-				// give SC widget 2s to settle on Netlify before probing
-				setTimeout(() => {
-					widget.play();
-					widget.pause();
-					widget.seekTo(0);
-					loading = false;
-					widgetReady = true;
-				}, 2000);
+		widget.bind(SC.Widget.Events.READY, () => {
+			// grab duration & artwork
+			widget.getDuration((d: number) => (fullDuration = d));
+			widget.getCurrentSound((sound: any) => {
+				artworkUrl = sound.artwork_url || '';
 			});
+
+			// small delay for Netlify, then probe the player
+			setTimeout(() => {
+				widget.play();
+				widget.pause();
+				widget.seekTo(0);
+				loading = false;
+				widgetReady = true;
+			}, 1000);
 		});
 
 		widget.bind(SC.Widget.Events.PLAY, () => {

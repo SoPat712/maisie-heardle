@@ -18,7 +18,7 @@
 
 	const COLORS = {
 		background: '#ffffff',
-		text: '#050315',
+		text: '#121212',
 		primary: '#83D4FD',
 		secondary: '#F484C1',
 		accent: '#F0440E'
@@ -245,14 +245,12 @@
 			if (!gameOver) {
 				snippetTimeout = setTimeout(() => {
 					widget.pause();
-					// snap exactly to the end of this snippet
 					currentPosition = segmentDurations[attemptCount];
 				}, segmentDurations[attemptCount]);
 			}
 		});
 		widget.bind(SC.Widget.Events.PAUSE, stopAllTimers);
 		widget.bind(SC.Widget.Events.FINISH, () => {
-			// ensure we hit the very end
 			currentPosition = gameOver ? fullDuration : segmentDurations[attemptCount];
 			stopAllTimers();
 		});
@@ -309,7 +307,6 @@
 		if (selectedTrack.title.toLowerCase() === ans) {
 			attemptInfos = [...attemptInfos, { status: 'correct', title: currentTrack.title }];
 			gameOver = true;
-			// include try count in winning message
 			message = `✅ Correct! It was “${currentTrack.title}.” You got it in ${attemptCount} ${attemptCount === 1 ? 'try' : 'tries'}.`;
 			widget.pause();
 		} else {
@@ -343,10 +340,9 @@
 		userInput = s.title;
 		suggestions = [];
 		inputEl.blur();
-		window.scrollTo({ top: 0, behavior: 'smooth' });
 	}
 
-	// update suggestions reactively, but hide once a track is selected
+	// update suggestions reactively, hide once a track is selected
 	$: suggestions =
 		userInput && !selectedTrack
 			? tracks.filter((t) => t.title.toLowerCase().includes(userInput.toLowerCase())).slice(0, 5)
@@ -427,9 +423,10 @@
 			Heardle – {ARTIST_NAME}
 		</h1>
 		<button on:click={() => (showHowTo = true)}>
-			<Icon src={QuestionMarkCircle} class="h-6 w-6" style="color:{COLORS.accent}" />
+			<Icon src={QuestionMarkCircle} class="h-6 w-6" style="color:{COLORS.secondary}" />
 		</button>
 	</div>
+
 	<hr class="mx-4 my-3" style="border-color:{darkMode ? COLORS.background : COLORS.text}" />
 
 	<!-- Attempts -->
@@ -506,7 +503,7 @@
 		>
 			<div
 				class="absolute top-0 left-0 h-full transition-[width] duration-100"
-				style="width:{fillPercent}%;background:{COLORS.primary}"
+				style="width:{fillPercent}%;background:{COLORS.accent}"
 			></div>
 			{#if !gameOver}
 				{#each boundaries as b}
@@ -529,9 +526,9 @@
 			<button
 				on:click={togglePlayPause}
 				class="flex h-16 w-16 items-center justify-center rounded-full border-2 disabled:opacity-50"
-				style="border-color:{COLORS.primary}"
+				style="border-color:{COLORS.accent}"
 			>
-				<Icon src={isPlaying ? Pause : Play} class="h-8 w-8" style="color:{COLORS.primary}" />
+				<Icon src={isPlaying ? Pause : Play} class="h-8 w-8" style="color:{COLORS.accent}" />
 			</button>
 		</div>
 
@@ -544,6 +541,9 @@
 					placeholder="Type song title…"
 					bind:value={userInput}
 					on:keydown={onInputKeydown}
+					on:focus={() => {
+						selectedTrack = null;
+					}}
 					class="w-full rounded border px-3 py-2"
 					style="border-color:{COLORS.primary};background:{darkMode
 						? COLORS.text
@@ -587,7 +587,7 @@
 				<button
 					on:click={submitGuess}
 					class="rounded px-4 py-2 font-semibold"
-					style="background:{COLORS.accent};color:{COLORS.background}"
+					style="background:{COLORS.secondary};color:{COLORS.background}"
 					disabled={!selectedTrack}
 				>
 					Submit

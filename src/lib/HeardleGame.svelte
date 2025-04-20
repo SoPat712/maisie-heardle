@@ -273,7 +273,7 @@
 				widget.seekTo(0);
 				loading = false;
 				widgetReady = true;
-			}, 750);
+			}, 1500);
 		});
 
 		widget.bind(SC.Widget.Events.PLAY, () => {
@@ -521,11 +521,11 @@
 
 	<iframe
 		bind:this={iframeElement}
-		class="hidden"
 		src={`https://w.soundcloud.com/player/?url=${encodeURIComponent(currentTrack.url)}`}
+		style="position:absolute; width:0; height:0; border:0; overflow:hidden; visibility:hidden;"
 		allow="autoplay"
 		title="preview player"
-	></iframe>
+	/>
 
 	<!-- Bottom‑pinned controls -->
 	<div class="mt-auto px-4 pb-4">

@@ -1,4 +1,3 @@
-```markdown
 # Heardle – Maisie Peters Edition
 
 **Josh Patra**

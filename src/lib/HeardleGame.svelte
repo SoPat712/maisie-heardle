@@ -158,7 +158,7 @@
 	let iframeElement: HTMLIFrameElement;
 	let widget: any;
 	let widgetReady = false;
-	let loading = true; // ← disable play until preload
+	let loading = true; // ← stay disabled until probe finishes
 	let artworkUrl = '';
 	let isPlaying = false;
 	let currentPosition = 0;
@@ -225,23 +225,25 @@
 	}
 
 	onMount(() => {
+		// dark‑mode listener
 		window
 			.matchMedia('(prefers-color-scheme: dark)')
 			.addEventListener('change', (e) => (darkMode = e.matches));
+
+		// countdown
 		updateTime();
 		countdownInterval = setInterval(updateTime, 1000);
 
+		// SoundCloud widget
 		widget = SC.Widget(iframeElement);
 
-		// bind READY right away, then “warm up” the widget after a short delay
+		// bind READY immediately
 		widget.bind(SC.Widget.Events.READY, () => {
-			// grab duration & artwork
 			widget.getDuration((d: number) => (fullDuration = d));
 			widget.getCurrentSound((sound: any) => {
 				artworkUrl = sound.artwork_url || '';
 			});
-
-			// wait 2s for Netlify load, then probe
+			// warm‑up probe after 1 s
 			setTimeout(() => {
 				widget.play();
 				widget.pause();
@@ -308,24 +310,19 @@
 	}
 
 	function submitGuess() {
-		if (!widgetReady || gameOver) return;
+		if (!widgetReady || gameOver || !userInput) return;
 		if (!selectedTrack && suggestions.length) {
 			selectedTrack =
 				suggestions.find((t) => t.title.toLowerCase() === userInput.toLowerCase()) ||
 				suggestions[0];
 		}
 		if (!selectedTrack) return;
-
 		attemptCount++;
 		const ans = currentTrack.title.toLowerCase();
 		if (selectedTrack.title.toLowerCase() === ans) {
 			attemptInfos = [...attemptInfos, { status: 'correct', title: currentTrack.title }];
 			gameOver = true;
-			message = `✅ Correct! It was “${currentTrack.title}.” You ${
-				attemptCount === maxAttempts
-					? 'nailed it on the last try!'
-					: `got it in ${attemptCount} ${attemptCount === 1 ? 'try' : 'tries'}.`
-			}`;
+			message = `✅ Correct! It was “${currentTrack.title}.” You got it in ${attemptCount} ${attemptCount === 1 ? 'try' : 'tries'}.`;
 			widget.pause();
 		} else {
 			attemptInfos = [...attemptInfos, { status: 'wrong', title: selectedTrack.title }];
@@ -360,6 +357,12 @@
 			? tracks.filter((t) => t.title.toLowerCase().includes(userInput.toLowerCase())).slice(0, 5)
 			: [];
 </script>
+
+<!-- src/lib/HeardleGame.svelte -->
+<svelte:head>
+	<!-- always load the SC Widget API, even on Netlify -->
+	<script src="https://w.soundcloud.com/player/api.js" async defer></script>
+</svelte:head>
 
 <!-- How to Play Modal -->
 {#if showHowTo}

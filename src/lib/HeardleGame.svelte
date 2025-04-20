@@ -241,10 +241,6 @@
 			});
 		});
 		widget.bind(SC.Widget.Events.PLAY, () => {
-			// startPolling();
-			// if (!gameOver) {
-			// 	snippetTimeout = setTimeout(() => widget.pause(), segmentDurations[attemptCount]);
-			// }
 			startPolling();
 			if (!gameOver) {
 				snippetTimeout = setTimeout(() => {
@@ -261,9 +257,7 @@
 			stopAllTimers();
 		});
 		widget.bind(SC.Widget.Events.PLAY_PROGRESS, (e: { currentPosition: number }) => {
-			// only update while actually playing
 			if (!isPlaying) return;
-
 			const limit = gameOver ? fullDuration : segmentDurations[attemptCount];
 			if (e.currentPosition >= limit) {
 				currentPosition = limit;
@@ -350,6 +344,11 @@
 		inputEl.blur();
 		window.scrollTo({ top: 0, behavior: 'smooth' });
 	}
+
+	// update suggestions reactively
+	$: suggestions = userInput
+		? tracks.filter((t) => t.title.toLowerCase().includes(userInput.toLowerCase())).slice(0, 5)
+		: [];
 </script>
 
 <!-- How to Play Modal -->
@@ -534,7 +533,7 @@
 
 		<!-- Guess & Skip/Submit -->
 		{#if !gameOver}
-			<div class="mb-4">
+			<div class="relative mb-4 overflow-visible">
 				<input
 					bind:this={inputEl}
 					type="text"
@@ -548,10 +547,11 @@
 				/>
 				{#if suggestions.length}
 					<ul
-						class="mt-1 max-h-36 overflow-y-auto rounded border"
-						style="border-color:{darkMode ? COLORS.background : COLORS.text};background:{darkMode
-							? COLORS.text
-							: COLORS.background}"
+						class="absolute bottom-full left-0 z-10 mb-1 max-h-36 w-full overflow-y-auto rounded border"
+						style="
+							border-color: {darkMode ? COLORS.background : COLORS.text};
+							background:    {darkMode ? COLORS.text : COLORS.background}
+						"
 					>
 						{#each suggestions as s}
 							<li>

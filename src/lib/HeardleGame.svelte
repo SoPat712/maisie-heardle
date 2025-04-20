@@ -232,6 +232,8 @@
 		countdownInterval = setInterval(updateTime, 1000);
 
 		widget = SC.Widget(iframeElement);
+
+		// bind READY right away, then “warm up” the widget after a short delay
 		widget.bind(SC.Widget.Events.READY, () => {
 			// grab duration & artwork
 			widget.getDuration((d: number) => (fullDuration = d));
@@ -239,7 +241,7 @@
 				artworkUrl = sound.artwork_url || '';
 			});
 
-			// small delay for Netlify, then probe the player
+			// wait 2s for Netlify load, then probe
 			setTimeout(() => {
 				widget.play();
 				widget.pause();

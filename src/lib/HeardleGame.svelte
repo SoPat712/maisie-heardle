@@ -158,7 +158,7 @@
 	let iframeElement: HTMLIFrameElement;
 	let widget: any;
 	let widgetReady = false;
-	let loading = true; // ← stay disabled until probe finishes
+	let loading = true; // disable play until we warm up the widget
 	let artworkUrl = '';
 	let isPlaying = false;
 	let currentPosition = 0;
@@ -224,33 +224,43 @@
 		clearTimeout(snippetTimeout);
 	}
 
-	onMount(() => {
+	onMount(async () => {
+		// dynamically load SC API if needed
+		if (typeof window.SC === 'undefined') {
+			await new Promise<void>((resolve, reject) => {
+				const tag = document.createElement('script');
+				tag.src = 'https://w.soundcloud.com/player/api.js';
+				tag.async = true;
+				tag.onload = () => resolve();
+				tag.onerror = () => reject(new Error('Failed to load SoundCloud API'));
+				document.head.appendChild(tag);
+			});
+		}
+
 		// dark‑mode listener
 		window
 			.matchMedia('(prefers-color-scheme: dark)')
 			.addEventListener('change', (e) => (darkMode = e.matches));
-
 		// countdown
 		updateTime();
 		countdownInterval = setInterval(updateTime, 1000);
 
 		// SoundCloud widget
 		widget = SC.Widget(iframeElement);
-
-		// bind READY immediately
 		widget.bind(SC.Widget.Events.READY, () => {
+			// grab duration & artwork
 			widget.getDuration((d: number) => (fullDuration = d));
 			widget.getCurrentSound((sound: any) => {
 				artworkUrl = sound.artwork_url || '';
 			});
-			// warm‑up probe after 1 s
+			// warm up on Netlify
 			setTimeout(() => {
 				widget.play();
 				widget.pause();
 				widget.seekTo(0);
 				loading = false;
 				widgetReady = true;
-			}, 1000);
+			}, 2000);
 		});
 
 		widget.bind(SC.Widget.Events.PLAY, () => {
@@ -299,6 +309,10 @@
 		isPlaying ? widget.pause() : playSegment();
 	}
 
+	function toggleDark() {
+		darkMode = !darkMode;
+	}
+
 	function skipIntro() {
 		if (!widgetReady || gameOver) return;
 		attemptInfos = [...attemptInfos, { status: 'skip' }];
@@ -317,6 +331,7 @@
 				suggestions[0];
 		}
 		if (!selectedTrack) return;
+
 		attemptCount++;
 		const ans = currentTrack.title.toLowerCase();
 		if (selectedTrack.title.toLowerCase() === ans) {
@@ -358,24 +373,17 @@
 			: [];
 </script>
 
-<!-- src/lib/HeardleGame.svelte -->
-<svelte:head>
-	<!-- always load the SC Widget API, even on Netlify -->
-	<script src="https://w.soundcloud.com/player/api.js" async defer></script>
-</svelte:head>
-
 <!-- How to Play Modal -->
 {#if showHowTo}
 	<div class="fixed inset-0 z-50 flex items-center justify-center">
 		<div class="absolute inset-0 bg-black/40"></div>
 		<div
 			class="relative w-4/5 max-w-md rounded-lg p-8 text-center"
-			style="
-        background: {darkMode ? COLORS.text : COLORS.background};
-        color:      {darkMode ? COLORS.background : COLORS.text}
-      "
+			style="background:{darkMode ? COLORS.text : COLORS.background};color:{darkMode
+				? COLORS.background
+				: COLORS.text}"
 		>
-			<h2 class="mb-4 text-2xl font-bold uppercase" style="color: {COLORS.primary}">How to Play</h2>
+			<h2 class="mb-4 text-2xl font-bold uppercase" style="color:{COLORS.primary}">How to Play</h2>
 			<ul class="space-y-4 text-base">
 				<li>🎵 Play the snippet.</li>
 				<li>🔊 Skips & wrongs unlock more.</li>
@@ -383,10 +391,7 @@
 			</ul>
 			<button
 				class="mt-6 rounded px-6 py-2 font-semibold"
-				style="
-          background: {COLORS.primary};
-          color:      {darkMode ? COLORS.text : COLORS.background}
-        "
+				style="background:{COLORS.primary};color:{darkMode ? COLORS.text : COLORS.background}"
 				on:click={() => (showHowTo = false)}
 			>
 				Close
@@ -401,28 +406,23 @@
 		<div class="absolute inset-0 bg-black/40"></div>
 		<div
 			class="relative w-4/5 max-w-md space-y-4 rounded-lg p-8"
-			style="
-        background: {darkMode ? COLORS.text : COLORS.background};
-        color:      {darkMode ? COLORS.background : COLORS.text}
-      "
+			style="background:{darkMode ? COLORS.text : COLORS.background};color:{darkMode
+				? COLORS.background
+				: COLORS.text}"
 		>
 			<p class="font-semibold">{ARTIST_NAME} – Test your knowledge!</p>
 			<p>All songs used are copyrighted and belong to {ARTIST_NAME}.</p>
 			<p>I do not, and never will, collect any of your personal data.</p>
-			<!-- (mostly because I don't want to pay a company to gather data I don't need or care about) -->
 			<hr class="my-4" style="border-color:{darkMode ? COLORS.background : COLORS.text}" />
 			<p class="text-xs" style="color:{COLORS.accent}">
-				Prepared with SoundCloud, Svelte, Tailwind CSS, Inter font, svelte-hero-icons, and moment.js
-				<br /><br />
-				Game version: 2.1.0
+				Prepared with SoundCloud, Svelte, Tailwind CSS, Inter font, svelte-hero-icons, and moment.js<br
+				/><br />
+				Game version: 2.3.1
 			</p>
 			<p class="text-sm italic">New track in <strong>{timeLeft}</strong></p>
 			<button
 				class="mt-4 rounded px-6 py-2 font-semibold"
-				style="
-          background: {COLORS.primary};
-          color:      {darkMode ? COLORS.text : COLORS.background}
-        "
+				style="background:{COLORS.primary};color:{darkMode ? COLORS.text : COLORS.background}"
 				on:click={() => (showInfo = false)}
 			>
 				Close
@@ -434,10 +434,9 @@
 <!-- Main UI -->
 <div
 	class="fixed inset-0 flex flex-col overflow-hidden"
-	style="
-    background: {darkMode ? COLORS.text : COLORS.background};
-    color:      {darkMode ? COLORS.background : COLORS.text}
-  "
+	style="background:{darkMode ? COLORS.text : COLORS.background};color:{darkMode
+		? COLORS.background
+		: COLORS.text}"
 >
 	<!-- Header -->
 	<div class="flex items-center justify-between px-4 pt-4">
@@ -465,22 +464,17 @@
 			{#each attemptInfos as info}
 				<div
 					class="flex h-12 items-center rounded border px-3 font-semibold"
-					style="
-            border-color: {info.status === 'skip'
+					style="border-color:{info.status === 'skip'
 						? COLORS.primary
 						: info.status === 'wrong'
 							? COLORS.accent
-							: COLORS.secondary};
-            color: {info.status === 'skip'
+							: COLORS.secondary};color:{info.status === 'skip'
 						? COLORS.primary
 						: info.status === 'wrong'
 							? COLORS.accent
-							: COLORS.secondary}
-          "
+							: COLORS.secondary}"
 				>
-					{#if info.status === 'skip'}▢ Skipped
-					{:else if info.status === 'wrong'}☒ {info.title}
-					{:else}✓ {info.title}{/if}
+					{#if info.status === 'skip'}▢ Skipped{:else if info.status === 'wrong'}☒ {info.title}{:else}✓ {info.title}{/if}
 				</div>
 			{/each}
 			{#each Array(maxAttempts - attemptInfos.length) as _}
@@ -499,9 +493,7 @@
 				href={currentTrack.url}
 				target="_blank"
 				rel="noopener"
-				class={`flex items-center overflow-hidden rounded-lg border-2 ${
-					darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'
-				}`}
+				class={`flex items-center overflow-hidden rounded-lg border-2 ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
 				style="border-color:{COLORS.primary}"
 			>
 				{#if artworkUrl}
@@ -512,9 +504,7 @@
 					/>
 				{/if}
 				<div class="px-4 py-2">
-					<div class="font-semibold" style="color:{COLORS.primary}">
-						{currentTrack.title}
-					</div>
+					<div class="font-semibold" style="color:{COLORS.primary}">{currentTrack.title}</div>
 					<div class="text-sm" style="color:{COLORS.accent}">{ARTIST_NAME}</div>
 				</div>
 			</a>
@@ -584,19 +574,16 @@
 					on:keydown={onInputKeydown}
 					on:focus={() => (selectedTrack = null)}
 					class="w-full rounded border px-3 py-2"
-					style="
-            border-color:{COLORS.primary};
-            background:  {darkMode ? COLORS.text : COLORS.background};
-            color:       {darkMode ? COLORS.background : COLORS.text}
-          "
+					style="border-color:{COLORS.primary};background:{darkMode
+						? COLORS.text
+						: COLORS.background};color:{darkMode ? COLORS.background : COLORS.text}"
 				/>
 				{#if suggestions.length}
 					<ul
 						class="absolute bottom-full left-0 z-10 mb-1 max-h-36 w-full overflow-y-auto rounded border"
-						style="
-              border-color: {darkMode ? COLORS.background : COLORS.text};
-              background:    {darkMode ? COLORS.text : COLORS.background}
-            "
+						style="border-color:{darkMode ? COLORS.background : COLORS.text};background:{darkMode
+							? COLORS.text
+							: COLORS.background}"
 					>
 						{#each suggestions as s}
 							<li>
@@ -619,11 +606,7 @@
 					class="rounded px-4 py-2 font-semibold"
 					style="background:{COLORS.primary};color:{COLORS.background}"
 				>
-					{#if nextIncrementSec > 0}
-						Skip (+{nextIncrementSec}s)
-					{:else}
-						I don't know it
-					{/if}
+					{#if nextIncrementSec > 0}Skip (+{nextIncrementSec}s){:else}I don't know it{/if}
 				</button>
 				<button
 					on:click={submitGuess}

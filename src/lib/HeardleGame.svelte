@@ -158,7 +158,7 @@
 	let iframeElement: HTMLIFrameElement;
 	let widget: any;
 	let widgetReady = false;
-	let loading = true; // disable play until we warm up the widget
+	let loading = true;
 	let artworkUrl = '';
 	let isPlaying = false;
 	let currentPosition = 0;
@@ -209,12 +209,9 @@
 
 	function startPolling() {
 		isPlaying = true;
-
-		// clear any previous timers
 		clearInterval(progressInterval);
 		clearTimeout(snippetTimeout);
 
-		// progress bar updater
 		progressInterval = setInterval(() => {
 			widget.getPosition((pos: number) => {
 				const limit = gameOver ? fullDuration : segmentDurations[attemptCount];
@@ -222,12 +219,13 @@
 			});
 		}, 100);
 
-		// clamp at the end of this segment
 		if (!gameOver) {
+			// +100ms fudge so we never cut off at 1.999s instead of 2s
+			const clampMs = segmentDurations[attemptCount] + 100;
 			snippetTimeout = setTimeout(() => {
 				widget.pause();
 				currentPosition = segmentDurations[attemptCount];
-			}, segmentDurations[attemptCount]);
+			}, clampMs);
 		}
 	}
 
@@ -238,7 +236,6 @@
 	}
 
 	onMount(async () => {
-		// dynamically load SC API if needed
 		if (typeof window.SC === 'undefined') {
 			await new Promise<void>((resolve, reject) => {
 				const tag = document.createElement('script');
@@ -250,23 +247,20 @@
 			});
 		}
 
-		// dark‑mode listener
 		window
 			.matchMedia('(prefers-color-scheme: dark)')
 			.addEventListener('change', (e) => (darkMode = e.matches));
-		// countdown
+
 		updateTime();
 		countdownInterval = setInterval(updateTime, 1000);
 
-		// SoundCloud widget
 		widget = SC.Widget(iframeElement);
 		widget.bind(SC.Widget.Events.READY, () => {
-			// grab duration & artwork
 			widget.getDuration((d: number) => (fullDuration = d));
 			widget.getCurrentSound((sound: any) => {
 				artworkUrl = sound.artwork_url || '';
 			});
-			// warm up on Netlify
+
 			setTimeout(() => {
 				widget.play();
 				widget.pause();
@@ -276,9 +270,7 @@
 			}, 1000);
 		});
 
-		widget.bind(SC.Widget.Events.PLAY, () => {
-			startPolling();
-		});
+		// no more PLAY binding here!
 		widget.bind(SC.Widget.Events.PAUSE, stopAllTimers);
 		widget.bind(SC.Widget.Events.FINISH, () => {
 			currentPosition = gameOver ? fullDuration : segmentDurations[attemptCount];
@@ -307,7 +299,6 @@
 	function playSegment() {
 		if (!widgetReady || loading) return;
 		stopAllTimers();
-		currentPosition = 0;
 		widget.seekTo(0);
 		widget.play();
 		startPolling();
@@ -521,13 +512,14 @@
 		</div>
 	{/if}
 
+	<!-- Invisible iframe for mobile autoplay -->
 	<iframe
 		bind:this={iframeElement}
 		src={`https://w.soundcloud.com/player/?url=${encodeURIComponent(currentTrack.url)}`}
 		style="position:absolute; width:0; height:0; border:0; overflow:hidden; visibility:hidden;"
 		allow="autoplay"
 		title="preview player"
-	/>
+	></iframe>
 
 	<!-- Bottom‑pinned controls -->
 	<div class="mt-auto px-4 pb-4">

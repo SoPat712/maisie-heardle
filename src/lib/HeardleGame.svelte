@@ -396,9 +396,11 @@
 		>
 			<p class="font-semibold">{ARTIST_NAME} – Test your knowledge!</p>
 			<p>All songs used are copyrighted and belong to {ARTIST_NAME}.</p>
+			<p>I do not, and never will, collect any of your personal data.</p>
+			<!-- (mostly because I don't want to pay a company to gather data I don't need or care about) -->
 			<hr class="my-4" style="border-color:{darkMode ? COLORS.background : COLORS.text}" />
 			<p class="text-xs" style="color:{COLORS.accent}">
-				Prepared with SoundCloud, Svelte, Tailwind CSS, Inter font, svelte-hero-icons
+				Prepared with SoundCloud, Svelte, Tailwind CSS, Inter font, svelte-hero-icons, and moment.js
 				<br /><br />
 				Game version: 1.3.0
 			</p>

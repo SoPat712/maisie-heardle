@@ -301,16 +301,24 @@
 	}
 
 	function submitGuess() {
-		if (!widgetReady || !selectedTrack || gameOver) return;
+		if (!widgetReady || gameOver || !userInput) return;
+		// auto-select if none chosen
+		if (!selectedTrack && suggestions.length) {
+			selectedTrack =
+				suggestions.find((t) => t.title.toLowerCase() === userInput.toLowerCase()) ||
+				suggestions[0];
+		}
+		if (!selectedTrack) return;
+
 		attemptCount++;
 		const ans = currentTrack.title.toLowerCase();
-		if (selectedTrack.title.toLowerCase() === ans) {
+		if (selectedTrack!.title.toLowerCase() === ans) {
 			attemptInfos = [...attemptInfos, { status: 'correct', title: currentTrack.title }];
 			gameOver = true;
 			message = `✅ Correct! It was “${currentTrack.title}.” You got it in ${attemptCount} ${attemptCount === 1 ? 'try' : 'tries'}.`;
 			widget.pause();
 		} else {
-			attemptInfos = [...attemptInfos, { status: 'wrong', title: selectedTrack.title }];
+			attemptInfos = [...attemptInfos, { status: 'wrong', title: selectedTrack!.title }];
 			userInput = '';
 			selectedTrack = null;
 			if (attemptCount >= maxAttempts) revealAnswer();
@@ -326,12 +334,7 @@
 	function onInputKeydown(e: KeyboardEvent) {
 		if (e.key === 'Enter' && !gameOver) {
 			e.preventDefault();
-			if (!selectedTrack && suggestions.length) {
-				selectedTrack =
-					suggestions.find((t) => t.title.toLowerCase() === userInput.toLowerCase()) ||
-					suggestions[0];
-			}
-			if (selectedTrack) submitGuess();
+			submitGuess();
 		}
 	}
 
@@ -355,17 +358,23 @@
 		<div class="absolute inset-0 bg-black/40"></div>
 		<div
 			class="relative w-4/5 max-w-md rounded-lg p-8 text-center"
-			style="background: {COLORS.background}"
+			style="
+        background: {darkMode ? COLORS.text : COLORS.background};
+        color:      {darkMode ? COLORS.background : COLORS.text}
+      "
 		>
 			<h2 class="mb-4 text-2xl font-bold uppercase" style="color: {COLORS.primary}">How to Play</h2>
-			<ul class="space-y-4 text-base" style="color: {COLORS.text}">
+			<ul class="space-y-4 text-base">
 				<li>🎵 Play the snippet.</li>
 				<li>🔊 Skips & wrongs unlock more.</li>
 				<li>👍 Guess in as few tries as possible!</li>
 			</ul>
 			<button
 				class="mt-6 rounded px-6 py-2 font-semibold"
-				style="background: {COLORS.primary}; color: {COLORS.background}"
+				style="
+          background: {COLORS.primary};
+          color:      {darkMode ? COLORS.text : COLORS.background}
+        "
 				on:click={() => (showHowTo = false)}
 			>
 				Close
@@ -380,11 +389,14 @@
 		<div class="absolute inset-0 bg-black/40"></div>
 		<div
 			class="relative w-4/5 max-w-md space-y-4 rounded-lg p-8"
-			style="background:{COLORS.background};color:{COLORS.text}"
+			style="
+        background: {darkMode ? COLORS.text : COLORS.background};
+        color:      {darkMode ? COLORS.background : COLORS.text}
+      "
 		>
 			<p class="font-semibold">{ARTIST_NAME} – Test your knowledge!</p>
 			<p>All songs used are copyrighted and belong to {ARTIST_NAME}.</p>
-			<hr class="my-4" style="border-color:{COLORS.text}" />
+			<hr class="my-4" style="border-color:{darkMode ? COLORS.background : COLORS.text}" />
 			<p class="text-xs" style="color:{COLORS.accent}">
 				Prepared with SoundCloud, Svelte, Tailwind CSS, Inter font, svelte-hero-icons
 				<br /><br />
@@ -393,7 +405,10 @@
 			<p class="text-sm italic">New track in <strong>{timeLeft}</strong></p>
 			<button
 				class="mt-4 rounded px-6 py-2 font-semibold"
-				style="background:{COLORS.primary};color:{COLORS.background}"
+				style="
+          background: {COLORS.primary};
+          color:      {darkMode ? COLORS.text : COLORS.background}
+        "
 				on:click={() => (showInfo = false)}
 			>
 				Close
@@ -481,7 +496,6 @@
 					<div class="text-sm" style="color:{COLORS.accent}">{ARTIST_NAME}</div>
 				</div>
 			</a>
-			<!-- show win/lose message here -->
 			<p class="mt-4 text-center font-medium">{message}</p>
 		</div>
 	{/if}
@@ -551,7 +565,10 @@
 				/>
 				{#if suggestions.length}
 					<ul
-						class="absolute bottom-full left-0 z-10 mb-1 max-h-36 w-full overflow-y-auto rounded border"
+						class="
+							absolute bottom-full left-0 z-10 mb-1
+							max-h-36 w-full overflow-y-auto rounded border
+						"
 						style="
 							border-color: {darkMode ? COLORS.background : COLORS.text};
 							background:    {darkMode ? COLORS.text : COLORS.background}
@@ -588,7 +605,7 @@
 					on:click={submitGuess}
 					class="rounded px-4 py-2 font-semibold"
 					style="background:{COLORS.secondary};color:{COLORS.background}"
-					disabled={!selectedTrack}
+					disabled={!userInput}
 				>
 					Submit
 				</button>

@@ -510,7 +510,7 @@
 		style="position:absolute; width:0; height:0; border:0; overflow:hidden; visibility:hidden;"
 		allow="autoplay"
 		title="preview player"
-	/>
+	></iframe>
 
 	<!-- Bottom‑pinned controls -->
 	<div class="mt-auto px-4 pb-4">

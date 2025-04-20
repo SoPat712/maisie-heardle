@@ -158,6 +158,7 @@
 	let iframeElement: HTMLIFrameElement;
 	let widget: any;
 	let widgetReady = false;
+	let loading = true; // ← disable play until preload
 	let artworkUrl = '';
 	let isPlaying = false;
 	let currentPosition = 0;
@@ -190,7 +191,7 @@
 		timeLeft = `${h}:${m}:${s}`;
 	}
 
-	// ─── CLAMPED FILL PERCENT & NEXT SEGMENT ─────────────────────────────────────
+	// ─── FILL % & NEXT SEGMENT ───────────────────────────────────────────────────
 	let fillPercent = 0;
 	$: {
 		const raw = gameOver
@@ -224,22 +225,26 @@
 	}
 
 	onMount(() => {
-		// dark‑mode listener
 		window
 			.matchMedia('(prefers-color-scheme: dark)')
 			.addEventListener('change', (e) => (darkMode = e.matches));
-		// countdown
 		updateTime();
 		countdownInterval = setInterval(updateTime, 1000);
-		// SoundCloud widget
+
 		widget = SC.Widget(iframeElement);
 		widget.bind(SC.Widget.Events.READY, () => {
-			widgetReady = true;
 			widget.getDuration((d: number) => (fullDuration = d));
 			widget.getCurrentSound((sound: any) => {
 				artworkUrl = sound.artwork_url || '';
 			});
+			// preload silently:
+			widget.play();
+			widget.pause();
+			widget.seekTo(0);
+			loading = false;
+			widgetReady = true;
 		});
+
 		widget.bind(SC.Widget.Events.PLAY, () => {
 			startPolling();
 			if (!gameOver) {
@@ -275,19 +280,15 @@
 	});
 
 	function playSegment() {
-		if (!widgetReady) return;
+		if (!widgetReady || loading) return;
 		currentPosition = 0;
 		widget.seekTo(0);
 		widget.play();
 	}
 
 	function togglePlayPause() {
-		if (!widgetReady) return;
+		if (!widgetReady || loading) return;
 		isPlaying ? widget.pause() : playSegment();
-	}
-
-	function toggleDark() {
-		darkMode = !darkMode;
 	}
 
 	function skipIntro() {
@@ -301,8 +302,7 @@
 	}
 
 	function submitGuess() {
-		if (!widgetReady || gameOver || !userInput) return;
-		// auto-select if none chosen
+		if (!widgetReady || gameOver) return;
 		if (!selectedTrack && suggestions.length) {
 			selectedTrack =
 				suggestions.find((t) => t.title.toLowerCase() === userInput.toLowerCase()) ||
@@ -312,13 +312,17 @@
 
 		attemptCount++;
 		const ans = currentTrack.title.toLowerCase();
-		if (selectedTrack!.title.toLowerCase() === ans) {
+		if (selectedTrack.title.toLowerCase() === ans) {
 			attemptInfos = [...attemptInfos, { status: 'correct', title: currentTrack.title }];
 			gameOver = true;
-			message = `✅ Correct! It was “${currentTrack.title}.” You got it in ${attemptCount} ${attemptCount === 1 ? 'try' : 'tries'}.`;
+			message = `✅ Correct! It was “${currentTrack.title}.” You ${
+				attemptCount === maxAttempts
+					? 'nailed it on the last try!'
+					: `got it in ${attemptCount} ${attemptCount === 1 ? 'try' : 'tries'}.`
+			}`;
 			widget.pause();
 		} else {
-			attemptInfos = [...attemptInfos, { status: 'wrong', title: selectedTrack!.title }];
+			attemptInfos = [...attemptInfos, { status: 'wrong', title: selectedTrack.title }];
 			userInput = '';
 			selectedTrack = null;
 			if (attemptCount >= maxAttempts) revealAnswer();
@@ -345,7 +349,6 @@
 		inputEl.blur();
 	}
 
-	// update suggestions reactively, hide once a track is selected
 	$: suggestions =
 		userInput && !selectedTrack
 			? tracks.filter((t) => t.title.toLowerCase().includes(userInput.toLowerCase())).slice(0, 5)
@@ -402,7 +405,7 @@
 			<p class="text-xs" style="color:{COLORS.accent}">
 				Prepared with SoundCloud, Svelte, Tailwind CSS, Inter font, svelte-hero-icons, and moment.js
 				<br /><br />
-				Game version: 2.0.0
+				Game version: 2.1.0
 			</p>
 			<p class="text-sm italic">New track in <strong>{timeLeft}</strong></p>
 			<button
@@ -422,9 +425,10 @@
 <!-- Main UI -->
 <div
 	class="fixed inset-0 flex flex-col overflow-hidden"
-	style="background:{darkMode ? COLORS.text : COLORS.background};color:{darkMode
-		? COLORS.background
-		: COLORS.text}"
+	style="
+    background: {darkMode ? COLORS.text : COLORS.background};
+    color:      {darkMode ? COLORS.background : COLORS.text}
+  "
 >
 	<!-- Header -->
 	<div class="flex items-center justify-between px-4 pt-4">
@@ -452,15 +456,18 @@
 			{#each attemptInfos as info}
 				<div
 					class="flex h-12 items-center rounded border px-3 font-semibold"
-					style="border-color:{info.status === 'skip'
+					style="
+            border-color: {info.status === 'skip'
 						? COLORS.primary
 						: info.status === 'wrong'
 							? COLORS.accent
-							: COLORS.secondary};color:{info.status === 'skip'
+							: COLORS.secondary};
+            color: {info.status === 'skip'
 						? COLORS.primary
 						: info.status === 'wrong'
 							? COLORS.accent
-							: COLORS.secondary}"
+							: COLORS.secondary}
+          "
 				>
 					{#if info.status === 'skip'}▢ Skipped
 					{:else if info.status === 'wrong'}☒ {info.title}
@@ -496,7 +503,9 @@
 					/>
 				{/if}
 				<div class="px-4 py-2">
-					<div class="font-semibold" style="color:{COLORS.primary}">{currentTrack.title}</div>
+					<div class="font-semibold" style="color:{COLORS.primary}">
+						{currentTrack.title}
+					</div>
 					<div class="text-sm" style="color:{COLORS.accent}">{ARTIST_NAME}</div>
 				</div>
 			</a>
@@ -544,9 +553,14 @@
 			<button
 				on:click={togglePlayPause}
 				class="flex h-16 w-16 items-center justify-center rounded-full border-2 disabled:opacity-50"
-				style="border-color:{COLORS.accent}"
+				style="border-color:{loading ? '#888888' : COLORS.accent}"
+				disabled={loading}
 			>
-				<Icon src={isPlaying ? Pause : Play} class="h-8 w-8" style="color:{COLORS.accent}" />
+				<Icon
+					src={isPlaying ? Pause : Play}
+					class="h-8 w-8"
+					style="color:{loading ? '#888888' : COLORS.accent}"
+				/>
 			</button>
 		</div>
 
@@ -559,24 +573,21 @@
 					placeholder="Type song title…"
 					bind:value={userInput}
 					on:keydown={onInputKeydown}
-					on:focus={() => {
-						selectedTrack = null;
-					}}
+					on:focus={() => (selectedTrack = null)}
 					class="w-full rounded border px-3 py-2"
-					style="border-color:{COLORS.primary};background:{darkMode
-						? COLORS.text
-						: COLORS.background};color:{darkMode ? COLORS.background : COLORS.text}"
+					style="
+            border-color:{COLORS.primary};
+            background:  {darkMode ? COLORS.text : COLORS.background};
+            color:       {darkMode ? COLORS.background : COLORS.text}
+          "
 				/>
 				{#if suggestions.length}
 					<ul
-						class="
-							absolute bottom-full left-0 z-10 mb-1
-							max-h-36 w-full overflow-y-auto rounded border
-						"
+						class="absolute bottom-full left-0 z-10 mb-1 max-h-36 w-full overflow-y-auto rounded border"
 						style="
-							border-color: {darkMode ? COLORS.background : COLORS.text};
-							background:    {darkMode ? COLORS.text : COLORS.background}
-						"
+              border-color: {darkMode ? COLORS.background : COLORS.text};
+              background:    {darkMode ? COLORS.text : COLORS.background}
+            "
 					>
 						{#each suggestions as s}
 							<li>
@@ -619,5 +630,5 @@
 </div>
 
 <style>
-	/* Tailwind in app.css handles all spacing/layout */
+	/* Tailwind in app.css handles spacing/layout */
 </style>

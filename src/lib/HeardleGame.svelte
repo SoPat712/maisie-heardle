@@ -209,13 +209,26 @@
 
 	function startPolling() {
 		isPlaying = true;
+
+		// clear any previous timers
 		clearInterval(progressInterval);
+		clearTimeout(snippetTimeout);
+
+		// progress bar updater
 		progressInterval = setInterval(() => {
 			widget.getPosition((pos: number) => {
 				const limit = gameOver ? fullDuration : segmentDurations[attemptCount];
 				currentPosition = Math.min(pos, limit);
 			});
 		}, 100);
+
+		// clamp at the end of this segment
+		if (!gameOver) {
+			snippetTimeout = setTimeout(() => {
+				widget.pause();
+				currentPosition = segmentDurations[attemptCount];
+			}, segmentDurations[attemptCount]);
+		}
 	}
 
 	function stopAllTimers() {
@@ -260,17 +273,11 @@
 				widget.seekTo(0);
 				loading = false;
 				widgetReady = true;
-			}, 2000);
+			}, 750);
 		});
 
 		widget.bind(SC.Widget.Events.PLAY, () => {
 			startPolling();
-			if (!gameOver) {
-				snippetTimeout = setTimeout(() => {
-					widget.pause();
-					currentPosition = segmentDurations[attemptCount];
-				}, segmentDurations[attemptCount]);
-			}
 		});
 		widget.bind(SC.Widget.Events.PAUSE, stopAllTimers);
 		widget.bind(SC.Widget.Events.FINISH, () => {
@@ -609,7 +616,10 @@
 					{#if nextIncrementSec > 0}Skip (+{nextIncrementSec}s){:else}I don't know it{/if}
 				</button>
 				<button
-					on:click={submitGuess}
+					on:click={() => {
+						submitGuess();
+						togglePlayPause();
+					}}
 					class="rounded px-4 py-2 font-semibold"
 					style="background:{COLORS.secondary};color:{COLORS.background}"
 					disabled={!userInput}

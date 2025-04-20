@@ -388,7 +388,7 @@
 			<p class="text-xs" style="color:{COLORS.accent}">
 				Prepared with SoundCloud, Svelte, Tailwind CSS, Inter font, svelte-hero-icons
 				<br /><br />
-				Game version: 1.2.0
+				Game version: 1.3.0
 			</p>
 			<p class="text-sm italic">New track in <strong>{timeLeft}</strong></p>
 			<button

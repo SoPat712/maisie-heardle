@@ -325,12 +325,7 @@
 	function skipIntro() {
 		if (!widgetReady || gameOver) return;
 
-		skipInProgress = true; // guard the PAUSE handler
-		widget.pause(); // PAUSE event will handle restart
-		clearTimeout(snippetTimeout);
-		currentPosition = 0;
-
-		// record the skip
+		/*── 1 Record the skip attempt ──*/
 		attemptInfos = [...attemptInfos, { status: 'skip' }];
 		attemptCount++;
 		userInput = '';
@@ -338,8 +333,24 @@
 
 		if (attemptCount >= maxAttempts) {
 			revealAnswer();
+			return; // nothing more to do
 		}
-		// no playSegment() call here – PAUSE handler restarts next snippet
+
+		/*── 2 Decide how to advance ──*/
+		if (isPlaying) {
+			/* The usual case: we’re in the middle of a snippet.
+		   Guard PAUSE → playSegment() hand‑off exactly as before. */
+			skipInProgress = true;
+			clearTimeout(snippetTimeout);
+			widget.pause(); // PAUSE handler will launch the next snippet
+		} else {
+			/* Player is already paused (or hasn’t started yet).
+		   Start the next snippet right away. */
+			stopAllTimers(); // just in case something is still polling
+			currentPosition = 0;
+			/* No need for skipInProgress here – we’re bypassing the PAUSE pathway */
+			playSegment();
+		}
 	}
 
 	function submitGuess() {

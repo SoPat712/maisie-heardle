@@ -70,7 +70,7 @@ npm install
 ### Running Locally
 
 ```bash
-npm run dev
+npm run dev -- --open
 ```
 
 Visit `http://localhost:5173` in your browser. The game will load the SoundCloud widget and pre‑warm the daily snippet.
@@ -78,19 +78,15 @@ Visit `http://localhost:5173` in your browser. The game will load the SoundCloud
 ### Building for Production
 
 ```bash
-npm run build
+npm run build && npm run preview
 ```
 
 ### Deploying to Netlify
 
-1. Create a `netlify.toml` with:
-   ```toml
-   [build]
-     command   = "npm run build"
-     publish   = ".svelte-kit/output/client"
-   ```
-2. Push to a Git repository and connect to Netlify.  
-3. Set the publish directory to `.svelte-kit/output/client`.
+1. Connect your Netlify project to a Git repository and connect to Netlify.  
+2. Use the below build settings:
+![image](https://github.com/user-attachments/assets/9c297433-69ee-471e-81b5-94f2ce973e4e)
+
 
 ---
 

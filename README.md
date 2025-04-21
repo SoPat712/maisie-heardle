@@ -1,8 +1,8 @@
 # Heardle – Maisie Peters Edition
 
-**Josh Patra**
-
 A daily “Heardle”‑style music‑guessing game built with SvelteKit, Tailwind CSS, and the SoundCloud Widget API. Each day, a 2‑second snippet of a Maisie Peters track is unlocked with skips and wrong guesses revealing longer segments until you either guess the song or run out of tries.
+
+Made to be modifiable, so you can play this game for any artists you like!
 
 ---
 
@@ -27,7 +27,10 @@ A daily “Heardle”‑style music‑guessing game built with SvelteKit, Tailwi
 ## Demo
 
 See it in action:  
-> https://maisie-peters-heardle.joshpatra.me
+> https://maisie-peters-heardle.joshpatra.me'
+
+![image](https://github.com/user-attachments/assets/ec9bf8aa-ee41-42a7-9202-4e5e8719ffbc)
+
 
 ---
 

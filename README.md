@@ -103,7 +103,11 @@ npm run build && npm run preview
   ```
 - **Track List**  
   Edit `const TRACKS_DATA: TrackData[] = [...]` to add, remove, or comment out tracks.
-  I'm putting together a way to make this easier, but it's still going to require a lot of manual labor to do.
+      
+  https://github.com/SoPat712/soundcloud-track-importer
+
+   See this other project I put together to build a track list
+
 - **Segment Increments**  
   Adjust `const SEGMENT_INCREMENTS = [2,1,2,3,4,5];` to change snippet lengths.
 

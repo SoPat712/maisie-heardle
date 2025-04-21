@@ -47,7 +47,7 @@ See it in action:
 - **[SvelteKit](https://kit.svelte.dev/)**  
 - **[Tailwind CSS](https://tailwindcss.com/)**  
 - **[SoundCloud Widget API](https://developers.soundcloud.com/docs/api/html5-widget)**  
-- **[Svelte Hero Icons](https://github.com/nathanchapman/svelte-hero-icons)**  
+- **[Svelte Hero Icons](https://github.com/JustinVoitel/svelte-hero-icons)**  
 - **[Moment.js](https://momentjs.com/)**  
 
 ---

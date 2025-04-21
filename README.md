@@ -103,7 +103,8 @@ npm run build
   const SC_USER     = 'maisie-peters';
   ```
 - **Track List**  
-  Edit `const TRACKS_DATA: TrackData[] = [...]` to add, remove, or comment out tracks.  
+  Edit `const TRACKS_DATA: TrackData[] = [...]` to add, remove, or comment out tracks.
+  I'm putting together a way to make this easier, but it's still going to require a lot of manual labor to do.
 - **Segment Increments**  
   Adjust `const SEGMENT_INCREMENTS = [2,1,2,3,4,5];` to change snippet lengths.
 

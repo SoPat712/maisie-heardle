@@ -1,3 +1,4 @@
+<!-- src/routes/+page.svelte -->
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import moment from 'moment';
@@ -138,10 +139,10 @@
 	let currentTrack = tracks[Math.floor(seededRandom() * tracks.length)];
 
 	// ─── SEGMENTS ───────────────────────────────────────────────────────────────
-	const SEGMENT_INCREMENTS = [2, 1, 2, 3, 4, 5];
-	const segmentDurations = SEGMENT_INCREMENTS.reduce<number[]>((a, inc) => {
-		a.push((a.at(-1) ?? 0) + inc * 1000);
-		return a;
+	const SEGMENT_INCREMENTS = [2, 1, 2, 3, 4, 5]; // seconds
+	const segmentDurations = SEGMENT_INCREMENTS.reduce<number[]>((acc, inc) => {
+		acc.push((acc.at(-1) ?? 0) + inc * 1000);
+		return acc;
 	}, []);
 	const TOTAL_MS = segmentDurations.at(-1)!;
 	const TOTAL_SECONDS = TOTAL_MS / 1000;
@@ -158,12 +159,16 @@
 	let iframeElement: HTMLIFrameElement;
 	let widget: any;
 	let widgetReady = false;
-	let loading = true; // disable play until warmed up
+	let loading = true;
 	let artworkUrl = '';
 	let isPlaying = false;
 	let currentPosition = 0;
+	let snippetTimeout: ReturnType<typeof setTimeout>;
 	let progressInterval: ReturnType<typeof setInterval>;
 	let fullDuration = 0;
+
+	/* ── NEW: guards the PAUSE handler during skips ── */
+	let skipInProgress = false;
 
 	let showHowTo = false;
 	let showInfo = false;
@@ -203,14 +208,13 @@
 
 	function formatTime(ms: number) {
 		const s = Math.floor(ms / 1000);
-		return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '00')}`;
+		return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 	}
 
 	function startPolling() {
 		isPlaying = true;
+		skipInProgress = false; // clear guard once new snippet starts
 		clearInterval(progressInterval);
-
-		// progress updater—fires reliably on mobile
 		progressInterval = setInterval(() => {
 			widget.getPosition((pos: number) => {
 				currentPosition = pos;
@@ -221,9 +225,12 @@
 	function stopAllTimers() {
 		isPlaying = false;
 		clearInterval(progressInterval);
+		clearTimeout(snippetTimeout);
 	}
 
+	// ─── WIDGET SET‑UP ───────────────────────────────────────────────────────────
 	onMount(async () => {
+		// load SC API if missing
 		if (typeof window.SC === 'undefined') {
 			await new Promise<void>((resolve, reject) => {
 				const tag = document.createElement('script');
@@ -243,12 +250,13 @@
 		countdownInterval = setInterval(updateTime, 1000);
 
 		widget = SC.Widget(iframeElement);
+
+		// READY
 		widget.bind(SC.Widget.Events.READY, () => {
 			widget.getDuration((d: number) => (fullDuration = d));
 			widget.getCurrentSound((sound: any) => {
 				artworkUrl = sound.artwork_url || '';
 			});
-
 			// warm up
 			setTimeout(() => {
 				widget.play();
@@ -259,19 +267,32 @@
 			}, 750);
 		});
 
-		widget.bind(SC.Widget.Events.PAUSE, stopAllTimers);
-		widget.bind(SC.Widget.Events.FINISH, () => {
+		// PAUSE
+		widget.bind(SC.Widget.Events.PAUSE, () => {
+			/* Was this pause triggered by the Skip button? */
+			if (skipInProgress) {
+				stopAllTimers(); // clean up polling + timeouts
+
+				/* Immediately launch the next snippet */
+				playSegment(); // startPolling() in there will clear skipInProgress
+				return; // ← IMPORTANT: don’t fall through to default branch
+			}
+
+			/* Normal user pause or end‑of‑snippet pause */
 			stopAllTimers();
 		});
 
+		// FINISH
+		widget.bind(SC.Widget.Events.FINISH, stopAllTimers);
+
+		// PLAY_PROGRESS
 		widget.bind(SC.Widget.Events.PLAY_PROGRESS, (e: { currentPosition: number }) => {
 			if (!isPlaying) return;
 			const limit = gameOver ? fullDuration : segmentDurations[attemptCount];
 			currentPosition = e.currentPosition;
 			if (e.currentPosition >= limit) {
-				widget.pause();
+				widget.pause(); // will call PAUSE -> stopAllTimers
 				currentPosition = limit;
-				stopAllTimers();
 			}
 		});
 	});
@@ -279,14 +300,14 @@
 	onDestroy(() => {
 		stopAllTimers();
 		clearInterval(countdownInterval);
-		if (widget?.unbind) {
-			Object.values(SC.Widget.Events).forEach((ev) => widget.unbind(ev));
-		}
+		if (widget?.unbind) Object.values(SC.Widget.Events).forEach((ev) => widget.unbind(ev));
 	});
 
+	// ─── GAME ACTIONS ───────────────────────────────────────────────────────────
 	function playSegment() {
 		if (!widgetReady || loading) return;
 		stopAllTimers();
+		currentPosition = 0;
 		widget.seekTo(0);
 		widget.play();
 		startPolling();
@@ -303,15 +324,22 @@
 
 	function skipIntro() {
 		if (!widgetReady || gameOver) return;
+
+		skipInProgress = true; // guard the PAUSE handler
+		widget.pause(); // PAUSE event will handle restart
+		clearTimeout(snippetTimeout);
+		currentPosition = 0;
+
+		// record the skip
 		attemptInfos = [...attemptInfos, { status: 'skip' }];
 		attemptCount++;
 		userInput = '';
 		selectedTrack = null;
+
 		if (attemptCount >= maxAttempts) {
 			revealAnswer();
-		} else {
-			playSegment();
 		}
+		// no playSegment() call here – PAUSE handler restarts next snippet
 	}
 
 	function submitGuess() {
@@ -328,7 +356,7 @@
 		if (selectedTrack.title.toLowerCase() === ans) {
 			attemptInfos = [...attemptInfos, { status: 'correct', title: currentTrack.title }];
 			gameOver = true;
-			message = `✅ Correct! It was ${currentTrack.title}. You got it ${
+			message = `✅ Correct! It was “${currentTrack.title}.” You got it ${
 				attemptCount === maxAttempts
 					? 'on the last try! Close one!'
 					: `in ${attemptCount} ${attemptCount === 1 ? 'try' : 'tries'}.`
@@ -374,11 +402,12 @@
 		<div class="absolute inset-0 bg-black/40"></div>
 		<div
 			class="relative w-4/5 max-w-md rounded-lg p-8 text-center"
-			style="background:{darkMode ? COLORS.text : COLORS.background};color:{darkMode
-				? COLORS.background
-				: COLORS.text}"
+			style="
+        background: {darkMode ? COLORS.text : COLORS.background};
+        color:      {darkMode ? COLORS.background : COLORS.text}
+      "
 		>
-			<h2 class="mb-4 text-2xl font-bold uppercase" style="color:{COLORS.primary}">How to Play</h2>
+			<h2 class="mb-4 text-2xl font-bold uppercase" style="color: {COLORS.primary}">How to Play</h2>
 			<ul class="space-y-4 text-base">
 				<li>🎵 Play the snippet.</li>
 				<li>🔊 Skips & wrongs unlock more.</li>
@@ -386,7 +415,10 @@
 			</ul>
 			<button
 				class="mt-6 rounded px-6 py-2 font-semibold"
-				style="background:{COLORS.primary};color:{darkMode ? COLORS.text : COLORS.background}"
+				style="
+          background: {COLORS.primary};
+          color:      {darkMode ? COLORS.text : COLORS.background}
+        "
 				on:click={() => (showHowTo = false)}
 			>
 				Close
@@ -401,23 +433,48 @@
 		<div class="absolute inset-0 bg-black/40"></div>
 		<div
 			class="relative w-4/5 max-w-md space-y-4 rounded-lg p-8"
-			style="background:{darkMode ? COLORS.text : COLORS.background};color:{darkMode
+			style="background:{darkMode ? COLORS.text : COLORS.background}; color:{darkMode
 				? COLORS.background
 				: COLORS.text}"
 		>
 			<p class="font-semibold">{ARTIST_NAME} – Test your knowledge!</p>
 			<p>All songs used are copyrighted and belong to {ARTIST_NAME}.</p>
 			<p>I do not, and never will, collect any of your personal data.</p>
+
 			<hr class="my-4" style="border-color:{darkMode ? COLORS.background : COLORS.text}" />
+
 			<p class="text-xs" style="color:{COLORS.accent}">
 				Prepared with SoundCloud, Svelte, Tailwind CSS, Inter font, svelte-hero-icons, and moment.js<br
-				/><br />
-				Game version: 3.0.0
+				/>
+				Game version: 3.1.0
 			</p>
+
+			<!-- Added links -->
+			<p class="text-xs">
+				<a
+					href="https://github.com/SoPat712/maisie-heardle"
+					target="_blank"
+					rel="noopener noreferrer"
+					class="underline hover:text-{COLORS.primary}"
+				>
+					View Source on GitHub
+				</a>
+			</p>
+			<p class="text-xs">
+				<a
+					href="https://joshpatra.me/"
+					target="_blank"
+					rel="noopener noreferrer"
+					class="underline hover:text-{COLORS.primary}"
+				>
+					My Portfolio
+				</a>
+			</p>
+
 			<p class="text-sm italic">New track in <strong>{timeLeft}</strong></p>
 			<button
 				class="mt-4 rounded px-6 py-2 font-semibold"
-				style="background:{COLORS.primary};color:{darkMode ? COLORS.text : COLORS.background}"
+				style="background:{COLORS.primary}; color:{darkMode ? COLORS.text : COLORS.background}"
 				on:click={() => (showInfo = false)}
 			>
 				Close
@@ -429,29 +486,30 @@
 <!-- Main UI -->
 <div
 	class="fixed inset-0 flex flex-col overflow-hidden"
-	style="background:{darkMode ? COLORS.text : COLORS.background};color:{darkMode
-		? COLORS.background
-		: COLORS.text}"
+	style="
+    background: {darkMode ? COLORS.text : COLORS.background};
+    color:      {darkMode ? COLORS.background : COLORS.text}
+  "
 >
 	<!-- Header -->
 	<div class="flex items-center justify-between px-4 pt-4">
 		<div class="flex space-x-2">
 			<button on:click={() => (showInfo = true)}>
-				<Icon src={InformationCircle} class="h-6 w-6" style="color:{COLORS.primary}" />
+				<Icon src={InformationCircle} class="h-6 w-6" style="color: {COLORS.primary}" />
 			</button>
 			<button on:click={toggleDark}>
-				<Icon src={darkMode ? Sun : Moon} class="h-6 w-6" style="color:{COLORS.primary}" />
+				<Icon src={darkMode ? Sun : Moon} class="h-6 w-6" style="color: {COLORS.primary}" />
 			</button>
 		</div>
 		<h1 class="flex-1 text-center font-serif text-lg font-bold whitespace-nowrap sm:text-3xl">
 			Heardle – {ARTIST_NAME}
 		</h1>
 		<button on:click={() => (showHowTo = true)}>
-			<Icon src={QuestionMarkCircle} class="h-6 w-6" style="color:{COLORS.secondary}" />
+			<Icon src={QuestionMarkCircle} class="h-6 w-6" style="color: {COLORS.secondary}" />
 		</button>
 	</div>
 
-	<hr class="mx-4 my-3" style="border-color:{darkMode ? COLORS.background : COLORS.text}" />
+	<hr class="mx-4 my-3" style="border-color: {darkMode ? COLORS.background : COLORS.text}" />
 
 	<!-- Attempts -->
 	{#if !gameOver}
@@ -459,23 +517,28 @@
 			{#each attemptInfos as info}
 				<div
 					class="flex h-12 items-center rounded border px-3 font-semibold"
-					style="border-color:{info.status === 'skip'
+					style="
+            border-color: {info.status === 'skip'
 						? COLORS.primary
 						: info.status === 'wrong'
 							? COLORS.accent
-							: COLORS.secondary};color:{info.status === 'skip'
+							: COLORS.secondary};
+            color: {info.status === 'skip'
 						? COLORS.primary
 						: info.status === 'wrong'
 							? COLORS.accent
-							: COLORS.secondary}"
+							: COLORS.secondary}
+          "
 				>
-					{#if info.status === 'skip'}▢ Skipped{:else if info.status === 'wrong'}☒ {info.title}{:else}✓ {info.title}{/if}
+					{#if info.status === 'skip'}▢ Skipped
+					{:else if info.status === 'wrong'}☒ {info.title}
+					{:else}✓ {info.title}{/if}
 				</div>
 			{/each}
 			{#each Array(maxAttempts - attemptInfos.length) as _}
 				<div
 					class="h-12 rounded border"
-					style="border-color:{darkMode ? COLORS.background : COLORS.text}"
+					style="border-color: {darkMode ? COLORS.background : COLORS.text}"
 				></div>
 			{/each}
 		</div>
@@ -489,7 +552,7 @@
 				target="_blank"
 				rel="noopener"
 				class={`flex items-center overflow-hidden rounded-lg border-2 ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
-				style="border-color:{COLORS.primary}"
+				style="border-color: {COLORS.primary}"
 			>
 				{#if artworkUrl}
 					<img
@@ -499,8 +562,8 @@
 					/>
 				{/if}
 				<div class="px-4 py-2">
-					<div class="font-semibold" style="color:{COLORS.primary}">{currentTrack.title}</div>
-					<div class="text-sm" style="color:{COLORS.accent}">{ARTIST_NAME}</div>
+					<div class="font-semibold" style="color: {COLORS.primary}">{currentTrack.title}</div>
+					<div class="text-sm" style="color: {COLORS.accent}">{ARTIST_NAME}</div>
 				</div>
 			</a>
 			<p class="mt-4 text-center font-medium">{message}</p>
@@ -521,17 +584,17 @@
 		<!-- Progress bar -->
 		<div
 			class="relative mb-2 w-full overflow-hidden rounded border"
-			style="height:1.25rem;border-color:{darkMode ? COLORS.background : COLORS.text}"
+			style="height:1.25rem; border-color: {darkMode ? COLORS.background : COLORS.text}"
 		>
 			<div
 				class="absolute top-0 left-0 h-full transition-[width] duration-100"
-				style="width:{fillPercent}%;background:{COLORS.accent}"
+				style="width: {fillPercent}%; background: {COLORS.accent}"
 			></div>
 			{#if !gameOver}
 				{#each boundaries as b}
 					<div
 						class="absolute top-0 bottom-0"
-						style="left:{(b / TOTAL_SECONDS) * 100}%;border-left:1px solid {darkMode
+						style="left: {(b / TOTAL_SECONDS) * 100}%; border-left:1px solid {darkMode
 							? COLORS.background
 							: COLORS.text}"
 					></div>
@@ -548,13 +611,13 @@
 			<button
 				on:click={togglePlayPause}
 				class="flex h-16 w-16 items-center justify-center rounded-full border-2 disabled:opacity-50"
-				style="border-color:{loading ? '#888888' : COLORS.accent}"
+				style="border-color: {loading ? '#888888' : COLORS.accent}"
 				disabled={loading}
 			>
 				<Icon
 					src={isPlaying ? Pause : Play}
 					class="h-8 w-8"
-					style="color:{loading ? '#888888' : COLORS.accent}"
+					style="color: {loading ? '#888888' : COLORS.accent}"
 				/>
 			</button>
 		</div>
@@ -570,14 +633,14 @@
 					on:keydown={onInputKeydown}
 					on:focus={() => (selectedTrack = null)}
 					class="w-full rounded border px-3 py-2"
-					style="border-color:{COLORS.primary};background:{darkMode
+					style="border-color: {COLORS.primary}; background: {darkMode
 						? COLORS.text
-						: COLORS.background};color:{darkMode ? COLORS.background : COLORS.text}"
+						: COLORS.background}; color: {darkMode ? COLORS.background : COLORS.text}"
 				/>
 				{#if suggestions.length}
 					<ul
 						class="absolute bottom-full left-0 z-10 mb-1 max-h-36 w-full overflow-y-auto rounded border"
-						style="border-color:{darkMode ? COLORS.background : COLORS.text};background:{darkMode
+						style="border-color: {darkMode ? COLORS.background : COLORS.text}; background: {darkMode
 							? COLORS.text
 							: COLORS.background}"
 					>
@@ -586,7 +649,7 @@
 								<button
 									type="button"
 									class="w-full px-3 py-2 text-left"
-									style="color:{darkMode ? COLORS.background : COLORS.text}"
+									style="color: {darkMode ? COLORS.background : COLORS.text}"
 									on:click={() => selectSuggestion(s)}
 								>
 									{s.title} – <span style="opacity:0.7">{s.artist}</span>
@@ -600,17 +663,14 @@
 				<button
 					on:click={skipIntro}
 					class="rounded px-4 py-2 font-semibold"
-					style="background:{COLORS.primary};color:{COLORS.background}"
+					style="background: {COLORS.primary}; color: {COLORS.background}"
 				>
 					{#if nextIncrementSec > 0}Skip (+{nextIncrementSec}s){:else}I don't know it{/if}
 				</button>
 				<button
-					on:click={() => {
-						submitGuess();
-						// togglePlayPause();
-					}}
+					on:click={submitGuess}
 					class="rounded px-4 py-2 font-semibold"
-					style="background:{COLORS.secondary};color:{COLORS.background}"
+					style="background: {COLORS.secondary}; color: {COLORS.background}"
 					disabled={!userInput}
 				>
 					Submit

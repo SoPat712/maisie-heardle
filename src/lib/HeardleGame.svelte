@@ -1,4 +1,3 @@
-<!-- src/routes/+page.svelte -->
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import moment from 'moment';
@@ -496,7 +495,7 @@
 
 <!-- Main UI -->
 <div
-	class="fixed inset-0 flex flex-col overflow-hidden"
+	class="fixed inset-0 flex flex-col overflow-y-auto"
 	style="
     background: {darkMode ? COLORS.text : COLORS.background};
     color:      {darkMode ? COLORS.background : COLORS.text}

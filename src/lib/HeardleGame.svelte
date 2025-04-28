@@ -558,7 +558,7 @@
 	{#if gameOver}
 		<div class="mb-6 px-4">
 			<a
-				href={currentTrack.url}
+				href={`https://song.link/${currentTrack.url}`}
 				target="_blank"
 				rel="noopener"
 				class={`flex items-center overflow-hidden rounded-lg border-2 ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}

@@ -1,5 +1,7 @@
 # Heardle – Maisie Peters Edition
 
+[![Netlify Status](https://api.netlify.com/api/v1/badges/2bfdf524-cfe2-4026-ba4c-b65a90862033/deploy-status)](https://app.netlify.com/sites/maisie-peters-heardle/deploys)
+
 A daily “Heardle”‑style music‑guessing game built with SvelteKit, Tailwind CSS, and the SoundCloud Widget API. Each day, a 2‑second snippet of a Maisie Peters track is unlocked with skips and wrong guesses revealing longer segments until you either guess the song or run out of tries.
 
 Made to be modifiable, so you can play this game for any artists you like!

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import moment from 'moment';
+	import seedrandom from 'seedrandom';
 	import {
 		Icon,
 		Play,
@@ -130,25 +131,25 @@
 	}));
 
 	// ─── SEED & PICK TRACK ────────────────────────────────────────────────────────
-	let seed = parseInt(moment().format('YYYYMMDD'), 10);
-	function seededRandom() {
-		seed = (seed * 9301 + 49297) % 233280;
-		return seed / 233280;
-	}
-	let currentTrack = tracks[Math.floor(seededRandom() * tracks.length)];
+	const todaySeed = moment().format('YYYYMMDD');
+
+	const rng = seedrandom(todaySeed);
+
+	const currentTrack = tracks[Math.floor(rng() * tracks.length)];
 
 	// ─── SEGMENTS ───────────────────────────────────────────────────────────────
 	const SEGMENT_INCREMENTS = [2, 1, 2, 3, 4, 5]; // seconds
-	const segmentDurations = SEGMENT_INCREMENTS.reduce<number[]>((acc, inc) => {
-		acc.push((acc.at(-1) ?? 0) + inc * 1000);
-		return acc;
-	}, []);
+	let total = 0;
+	const segmentDurations = SEGMENT_INCREMENTS.map((inc) => {
+		total += inc * 1000;
+		return total;
+	});
 	const TOTAL_MS = segmentDurations.at(-1)!;
 	const TOTAL_SECONDS = TOTAL_MS / 1000;
 	const maxAttempts = SEGMENT_INCREMENTS.length;
 	$: boundaries = segmentDurations.map((ms) => ms / 1000).slice(0, -1);
 
-	// ─── STATE & TIMERS ─────────────────────────────────────────────────────────
+	// ─── STATE&TIMERS ─────────────────────────────────────────────────────────
 	type Info = { status: 'skip' | 'wrong' | 'correct'; title?: string };
 	let attemptInfos: Info[] = [];
 	let attemptCount = 0;
@@ -166,7 +167,6 @@
 	let progressInterval: ReturnType<typeof setInterval>;
 	let fullDuration = 0;
 
-	/* ── NEW: guards the PAUSE handler during skips ── */
 	let skipInProgress = false;
 
 	let showHowTo = false;
@@ -194,7 +194,7 @@
 		timeLeft = `${h}:${m}:${s}`;
 	}
 
-	// ─── FILL % & NEXT SEGMENT ───────────────────────────────────────────────────
+	// ─── FILL%&NEXTSEGMENT ───────────────────────────────────────────────────
 	let fillPercent = 0;
 	$: {
 		const raw = gameOver
@@ -268,13 +268,11 @@
 
 		// PAUSE
 		widget.bind(SC.Widget.Events.PAUSE, () => {
-			/* Was this pause triggered by the Skip button? */
 			if (skipInProgress) {
 				stopAllTimers(); // clean up polling + timeouts
 
-				/* Immediately launch the next snippet */
 				playSegment(); // startPolling() in there will clear skipInProgress
-				return; // ← IMPORTANT: don’t fall through to default branch
+				return;
 			}
 
 			/* Normal user pause or end‑of‑snippet pause */
@@ -324,7 +322,6 @@
 	function skipIntro() {
 		if (!widgetReady || gameOver) return;
 
-		/*── 1 Record the skip attempt ──*/
 		attemptInfos = [...attemptInfos, { status: 'skip' }];
 		attemptCount++;
 		userInput = '';
@@ -335,19 +332,13 @@
 			return; // nothing more to do
 		}
 
-		/*── 2 Decide how to advance ──*/
 		if (isPlaying) {
-			/* The usual case: we’re in the middle of a snippet.
-		   Guard PAUSE → playSegment() hand‑off exactly as before. */
 			skipInProgress = true;
 			clearTimeout(snippetTimeout);
 			widget.pause(); // PAUSE handler will launch the next snippet
 		} else {
-			/* Player is already paused (or hasn’t started yet).
-		   Start the next snippet right away. */
 			stopAllTimers(); // just in case something is still polling
 			currentPosition = 0;
-			/* No need for skipInProgress here – we’re bypassing the PAUSE pathway */
 			playSegment();
 		}
 	}

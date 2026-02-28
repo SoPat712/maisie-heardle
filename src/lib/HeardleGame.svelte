@@ -9,7 +9,8 @@
 		InformationCircle,
 		QuestionMarkCircle,
 		Sun,
-		Moon
+		Moon,
+		ArrowPath
 	} from 'svelte-hero-icons';
 	declare const SC: any;
 
@@ -168,13 +169,10 @@
 	let fullDuration = 0;
 
 	let skipInProgress = false;
-
+	let isWarmingUp = false;
 	let showHowTo = false;
 	let showInfo = false;
-	let darkMode =
-		typeof window !== 'undefined'
-			? window.matchMedia('(prefers-color-scheme: dark)').matches
-			: false;
+	let darkMode = false;
 	let userInput = '';
 	let suggestions: Track[] = [];
 	let selectedTrack: Track | null = null;
@@ -195,13 +193,12 @@
 	}
 
 	// ─── FILL%&NEXTSEGMENT ───────────────────────────────────────────────────
-	let fillPercent = 0;
-	$: {
+	$: fillPercent = (() => {
 		const raw = gameOver
 			? (currentPosition / fullDuration) * 100
 			: (currentPosition / TOTAL_MS) * 100;
-		fillPercent = raw > 100 ? 100 : raw;
-	}
+		return Math.min(raw, 100);
+	})();
 	$: nextIncrementSec =
 		attemptCount < SEGMENT_INCREMENTS.length - 1 ? SEGMENT_INCREMENTS[attemptCount + 1] : 0;
 
@@ -215,6 +212,7 @@
 		skipInProgress = false; // clear guard once new snippet starts
 		clearInterval(progressInterval);
 		progressInterval = setInterval(() => {
+			if (!widget) return;
 			widget.getPosition((pos: number) => {
 				currentPosition = pos;
 			});
@@ -227,8 +225,24 @@
 		clearTimeout(snippetTimeout);
 	}
 
+	function ensurePlayState() {
+		if (!widget) return;
+		widget.isPaused((paused: boolean) => {
+			if (!paused && !isPlaying) {
+				// Widget is playing but our state says it's not
+				startPolling();
+			} else if (paused && isPlaying) {
+				// Widget is paused but our state says it's playing
+				stopAllTimers();
+			}
+		});
+	}
+
 	// ─── WIDGET SET‑UP ───────────────────────────────────────────────────────────
 	onMount(async () => {
+		// Initialize dark mode
+		darkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
+		
 		// load SC API if missing
 		if (typeof window.SC === 'undefined') {
 			await new Promise<void>((resolve, reject) => {
@@ -252,35 +266,65 @@
 
 		// READY
 		widget.bind(SC.Widget.Events.READY, () => {
-			widget.getDuration((d: number) => (fullDuration = d));
-			widget.getCurrentSound((sound: any) => {
-				artworkUrl = sound.artwork_url || '';
+			widget.getDuration((d: number) => {
+				fullDuration = d;
 			});
-			// warm up
+			widget.getCurrentSound((sound: any) => {
+				artworkUrl = sound?.artwork_url || '';
+			});
+			// warm up - play/pause to enable mobile autoplay with longer delays
+			isWarmingUp = true;
 			setTimeout(() => {
 				widget.play();
-				widget.pause();
-				widget.seekTo(0);
-				loading = false;
-				widgetReady = true;
-			}, 750);
+				setTimeout(() => {
+					widget.pause();
+					setTimeout(() => {
+						widget.seekTo(0);
+						loading = false;
+						widgetReady = true;
+						// Ensure we're in stopped state
+						isPlaying = false;
+						currentPosition = 0;
+						isWarmingUp = false;
+					}, 200);
+				}, 300);
+			}, 500);
+		});
+
+		// PLAY
+		widget.bind(SC.Widget.Events.PLAY, () => {
+			// Ignore warmup events
+			if (isWarmingUp) return;
+			
+			// Always sync state when widget starts playing
+			if (!isPlaying) {
+				startPolling();
+			}
 		});
 
 		// PAUSE
 		widget.bind(SC.Widget.Events.PAUSE, () => {
+			// Ignore warmup events
+			if (isWarmingUp) return;
+			
+			// Skip logic takes priority
 			if (skipInProgress) {
-				stopAllTimers(); // clean up polling + timeouts
-
-				playSegment(); // startPolling() in there will clear skipInProgress
+				stopAllTimers();
+				playSegment(false);
 				return;
 			}
 
-			/* Normal user pause or end‑of‑snippet pause */
-			stopAllTimers();
+			// Always sync state when widget pauses
+			if (isPlaying) {
+				stopAllTimers();
+			}
 		});
 
 		// FINISH
-		widget.bind(SC.Widget.Events.FINISH, stopAllTimers);
+		widget.bind(SC.Widget.Events.FINISH, () => {
+			stopAllTimers();
+			currentPosition = gameOver ? fullDuration : segmentDurations[attemptCount];
+		});
 
 		// PLAY_PROGRESS
 		widget.bind(SC.Widget.Events.PLAY_PROGRESS, (e: { currentPosition: number }) => {
@@ -301,18 +345,48 @@
 	});
 
 	// ─── GAME ACTIONS ───────────────────────────────────────────────────────────
-	function playSegment() {
+	function playSegment(seekToStart = true) {
 		if (!widgetReady || loading) return;
 		stopAllTimers();
-		currentPosition = 0;
-		widget.seekTo(0);
-		widget.play();
-		startPolling();
+		if (seekToStart && !gameOver) {
+			currentPosition = 0;
+			widget.seekTo(0);
+		}
+		// Longer delay to ensure seek completes and state is clean
+		setTimeout(() => {
+			widget.play();
+			// Don't start polling immediately, let PLAY event handle it
+		}, 100);
 	}
 
 	function togglePlayPause() {
 		if (!widgetReady || loading) return;
-		isPlaying ? widget.pause() : playSegment();
+		
+		// Sync state before toggling
+		ensurePlayState();
+		
+		if (isPlaying) {
+			widget.pause();
+		} else {
+			// When game is over, continue from current position
+			// When game is active, restart from beginning
+			playSegment(!gameOver);
+		}
+	}
+
+	function rewindSong() {
+		if (!widgetReady || !gameOver) return;
+		const wasPlaying = isPlaying;
+		stopAllTimers();
+		currentPosition = 0;
+		widget.seekTo(0);
+		if (wasPlaying) {
+			// If it was playing, continue playing from start
+			setTimeout(() => {
+				widget.play();
+				// Let PLAY event handle startPolling
+			}, 150);
+		}
 	}
 
 	function toggleDark() {
@@ -338,13 +412,12 @@
 			widget.pause(); // PAUSE handler will launch the next snippet
 		} else {
 			stopAllTimers(); // just in case something is still polling
-			currentPosition = 0;
-			playSegment();
+			playSegment(true); // start from beginning if not playing
 		}
 	}
 
 	function submitGuess() {
-		if (!widgetReady || gameOver || !userInput) return;
+		if (!widgetReady || gameOver || !userInput.trim()) return;
 		if (!selectedTrack && suggestions.length) {
 			selectedTrack =
 				suggestions.find((t) => t.title.toLowerCase() === userInput.toLowerCase()) ||
@@ -362,6 +435,7 @@
 					? 'on the last try! Close one!'
 					: `in ${attemptCount} ${attemptCount === 1 ? 'try' : 'tries'}.`
 			}`;
+			stopAllTimers();
 			widget.pause();
 		} else {
 			attemptInfos = [...attemptInfos, { status: 'wrong', title: selectedTrack.title }];
@@ -374,6 +448,7 @@
 	function revealAnswer() {
 		gameOver = true;
 		message = `❌ Out of tries! It was “${currentTrack.title}.”`;
+		stopAllTimers();
 		widget.pause();
 	}
 
@@ -587,17 +662,36 @@
 			class="relative mb-2 w-full overflow-hidden rounded border"
 			style="height:1.25rem; border-color: {darkMode ? COLORS.background : COLORS.text}"
 		>
+			{#if !gameOver}
+				<!-- Background segments showing unlocked/locked areas -->
+				{#each segmentDurations as segEnd, idx}
+					{@const segStart = idx === 0 ? 0 : segmentDurations[idx - 1]}
+					{@const isUnlocked = idx <= attemptCount}
+					<div
+						class="absolute top-0 h-full transition-all duration-500 ease-out"
+						style="
+							left: {(segStart / TOTAL_MS) * 100}%;
+							width: {isUnlocked ? ((segEnd - segStart) / TOTAL_MS) * 100 : 0}%;
+							background: {darkMode
+							? 'rgba(255, 255, 255, 0.15)'
+							: 'rgba(0, 0, 0, 0.1)'};
+						"
+					></div>
+				{/each}
+			{/if}
+			<!-- Active progress fill -->
 			<div
 				class="absolute top-0 left-0 h-full transition-[width] duration-100"
-				style="width: {fillPercent}%; background: {COLORS.accent}"
+				style="width: {fillPercent}%; background: {COLORS.accent}; z-index: 10;"
 			></div>
 			{#if !gameOver}
+				<!-- Segment dividers -->
 				{#each boundaries as b}
 					<div
 						class="absolute top-0 bottom-0"
 						style="left: {(b / TOTAL_SECONDS) * 100}%; border-left:1px solid {darkMode
 							? COLORS.background
-							: COLORS.text}"
+							: COLORS.text}; z-index: 20;"
 					></div>
 				{/each}
 			{/if}
@@ -607,8 +701,23 @@
 			<span>{formatTime(gameOver ? fullDuration : TOTAL_MS)}</span>
 		</div>
 
-		<!-- Play/Pause -->
-		<div class="mb-4 flex justify-center">
+		<!-- Play/Pause (and Rewind when game over) -->
+		<div class="mb-4 flex justify-center items-center gap-4">
+			{#if gameOver}
+				<button
+					on:click={rewindSong}
+					class="flex h-12 w-12 items-center justify-center rounded-full border-2 disabled:opacity-50"
+					style="border-color: {loading ? '#888888' : COLORS.primary}"
+					disabled={loading}
+					title="Restart from beginning"
+				>
+					<Icon
+						src={ArrowPath}
+						class="h-6 w-6"
+						style="color: {loading ? '#888888' : COLORS.primary}"
+					/>
+				</button>
+			{/if}
 			<button
 				on:click={togglePlayPause}
 				class="flex h-16 w-16 items-center justify-center rounded-full border-2 disabled:opacity-50"
@@ -670,9 +779,9 @@
 				</button>
 				<button
 					on:click={submitGuess}
-					class="rounded px-4 py-2 font-semibold"
+					class="rounded px-4 py-2 font-semibold disabled:opacity-50"
 					style="background: {COLORS.secondary}; color: {COLORS.background}"
-					disabled={!userInput}
+					disabled={!userInput.trim()}
 				>
 					Submit
 				</button>

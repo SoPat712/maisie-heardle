@@ -11,7 +11,7 @@ export const GET: RequestHandler = async ({ url }) => {
 			{ count },
 			{
 				headers: {
-					'cache-control': increment ? 'no-store' : 'public, max-age=60, stale-while-revalidate=300'
+					'cache-control': 'no-store'
 				}
 			}
 		);

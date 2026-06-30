@@ -275,7 +275,7 @@
 
 	async function loadGlobalGamesPlayed() {
 		try {
-			const res = await fetch('/api/stats/games-played');
+			const res = await fetch('/api/stats/games-played', { cache: 'no-store' });
 			if (res.ok) {
 				const data = (await res.json()) as { count?: number };
 				globalGamesPlayed = data.count ?? 0;
@@ -296,7 +296,7 @@
 		}
 
 		try {
-			const res = await fetch('/api/stats/games-played?increment=1');
+			const res = await fetch('/api/stats/games-played?increment=1', { cache: 'no-store' });
 			if (res.ok) {
 				const data = (await res.json()) as { count?: number };
 				globalGamesPlayed = data.count ?? 0;

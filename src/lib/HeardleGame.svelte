@@ -1,278 +1,408 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
-	import moment from 'moment';
-	import seedrandom from 'seedrandom';
+	import { onDestroy, onMount, tick } from 'svelte';
 	import {
+		ArrowPath,
 		Icon,
-		Play,
-		Pause,
 		InformationCircle,
-		QuestionMarkCircle,
-		Sun,
 		Moon,
-		ArrowPath
+		Pause,
+		Play,
+		QuestionMarkCircle,
+		Share,
+		Sun,
+		XMark
 	} from 'svelte-hero-icons';
-	declare const SC: any;
-
-	// ─── CONFIG & THEME ───────────────────────────────────────────────────────────
-	const ARTIST_NAME = 'Maisie Peters';
-	const SC_USER = 'maisie-peters';
+	import {
+		ARTIST_NAME,
+		getDailyTrack,
+		getLocalDateKey,
+		normalizeTrackTitle,
+		tracks,
+		type Track
+	} from '$lib/tracks';
 
 	const COLORS = {
 		background: '#ffffff',
-		text: '#121212',
-		primary: '#83D4FD',
-		secondary: '#F484C1',
-		accent: '#F0440E'
+		panel: '#ffffff',
+		text: '#171717',
+		muted: '#5f6268',
+		primary: '#127fb3',
+		secondary: '#c43a84',
+		accent: '#f15a24',
+		success: '#1f8a5b',
+		danger: '#c9342f'
 	};
 
-	// ─── TRACK LIST ───────────────────────────────────────────────────────────────
-	type TrackData = { title: string; slug: string };
-	const TRACKS_DATA: TrackData[] = [
-		{ title: 'Holy Revival', slug: 'holy-revival' },
-		{ title: 'The Song', slug: 'the-song' },
-		{ title: 'Guy On A Horse', slug: 'guy-on-a-horse' },
-		{ title: 'The Last One', slug: 'the-last-one' },
-		{ title: 'Yoko', slug: 'yoko' },
-		{ title: 'Truth Is', slug: 'truth-is' },
-		// { title: "There It Goes (Acoustic)", slug: "there-it-goes-acoustic" },
-		{ title: 'The Band And I', slug: 'the-band-and-i' },
-		{ title: 'There It Goes', slug: 'there-it-goes' },
-		{ title: 'Watch', slug: 'watch' },
-		{ title: 'History Of Man', slug: 'history-of-man' },
-		{ title: 'You’re Just A Boy (And I’m Kinda The Man)', slug: 'youre-just-a-boy-and-im-kinda' },
-		{ title: 'The Good Witch', slug: 'the-good-witch' },
-		{ title: 'Want You Back', slug: 'want-you-back' },
-		{ title: 'BSC', slug: 'bsc' },
-		{ title: 'Run', slug: 'run' },
-		{ title: 'Wendy', slug: 'wendy' },
-		{ title: 'Coming Of Age', slug: 'coming-of-age' },
-		{ title: 'Therapy', slug: 'therapy' },
-		// { title: "Lost The Breakup (Acoustic)", slug: "lost-the-breakup-acoustic" },
-		// { title: "Lost The Breakup (The Wild Remix)", slug: "lost-the-breakup-the-wild" },
-		{ title: 'Two Weeks Ago', slug: 'two-weeks-ago' },
-		{ title: 'Lost The Breakup', slug: 'lost-the-breakup' },
-		// { title: 'Lost The Breakup', slug: 'lost-the-breakup-1' },
-		// { title: "Body Better (Acapella)", slug: "body-better-acapella-acapella" },
-		// { title: "Body Better (Acoustic)", slug: "body-better-acoustic-acoustic" },
-		{ title: 'Body Better', slug: 'body-better' },
-		{ title: 'Together This Christmas', slug: 'together-this-christmas' },
-		{ title: 'Not Another Rockstar', slug: 'not-another-rockstar' },
-		{ title: 'Good Enough', slug: 'good-enough' },
-		{ title: 'Blonde', slug: 'blonde' },
-		// { title: "Cate’s Brother (BRELAND's Version)", slug: "cates-brother-brelands-version" },
-		// { title: "Cate’s Brother (Matt's Version)", slug: "cates-brother-matts-version" },
-		{ title: 'Cate’s Brother', slug: 'cates-brother' },
-		{ title: 'I’m Trying (Not Friends)', slug: 'im-trying-not-friends' },
-		{ title: 'Villain', slug: 'villain' },
-		{ title: 'Elvis Song', slug: 'elvis-song' },
-		{ title: 'Talking To Strangers', slug: 'talking-to-strangers' },
-		{ title: 'Love Him I Don’t', slug: 'love-him-i-dont' },
-		{ title: 'Outdoor Pool', slug: 'outdoor-pool' },
-		{ title: 'Boy', slug: 'boy' },
-		{ title: 'Hollow', slug: 'hollow' },
-		{ title: 'Tough Act', slug: 'tough-act' },
-		{ title: 'Volcano', slug: 'volcano' },
-		{ title: 'Brooklyn', slug: 'brooklyn' },
-		{ title: 'You Signed Up For This', slug: 'you-signed-up-for-this' },
-		// { title: "Psycho (Danny L Harle Remix)", slug: "psycho-danny-l-harle-remix" },
-		// { title: "Psycho (Acoustic)", slug: "psycho-acoustic" },
-		// { title: "Psycho (Joel Corry Remix)", slug: "psycho-joel-corry-remix" },
-		{ title: 'Psycho', slug: 'psycho' },
-		{ title: 'The Party', slug: 'the-party' },
-		{ title: 'Lunar Years', slug: 'lunar-years' },
-		{ title: 'Happy Hunting Ground (feat. Griff)', slug: 'happy-hunting-ground-feat' },
-		{ title: 'Helicopter', slug: 'helicopter' },
-		{ title: 'Milhouse', slug: 'milhouse' },
-		{ title: 'Glowing Review', slug: 'glowing-review' },
-		// { title: "I Want You To Change (Because You Want To Change) [feat. Bear's Den]", slug: "i-want-you-to-change-because" },
-		{ title: 'Neck Of The Woods', slug: 'neck-of-the-woods' },
-		{ title: 'Funeral (feat. James Bay)', slug: 'funeral-feat-james-bay' },
-		// { title: "John Hughes Movie (Acoustic)", slug: "john-hughes-movie-acoustic" },
-		// { title: "John Hughes Movie (Oliver Nelson Remix)", slug: "john-hughes-movie-oliver" },
-		{ title: 'John Hughes Movie', slug: 'john-hughes' },
-		// { title: "Maybe Don't (feat. JP Saxe) [Acoustic]", slug: "maybe-dont-feat-jp-saxe-1" },
-		// { title: "Maybe Don't (feat. JP Saxe) [MOTi Remix]", slug: "maybe-dont-feat-jp-saxe-moti" },
-		// { title: "Maybe Don't (feat. JP Saxe) [HONNE Remix]", slug: "maybe-dont-feat-jp-saxe-honne" },
-		{ title: "Maybe Don't (feat. JP Saxe)", slug: 'maybe-dont-feat-jp-saxe' },
-		// { title: "Sad Girl Summer (Cavetown Rework)", slug: "sad-girl-summer-cavetown" },
-		// { title: "Sad Girl Summer (emo version)", slug: "sad-girl-summer-emo-version" },
-		{ title: 'Sad Girl Summer', slug: 'sad-girl-summer' },
-		{ title: 'The List', slug: 'the-list' },
-		{ title: 'Daydreams', slug: 'daydreams' },
-		// { title: "Take Care of Yourself (Live Acoustic)", slug: "take-care-of-yourself-acoustic" },
-		// { title: "Adore You (Breydon Beggs Remix)", slug: "adore-you-breydon-beggs-remix" },
-		// { title: "Adore You (Acoustic)", slug: "adore-you-acoustic" },
-		// { title: "This Is On You (Acoustic)", slug: "this-is-on-you-acoustic" },
-		{ title: 'Look At Me Now', slug: 'look-at-me-now-1' },
-		{ title: 'Take Care Of Yourself', slug: 'take-care-of-yourself-1' },
-		{ title: 'Personal Best', slug: 'personal-best-1' },
-		{ title: 'April Showers', slug: 'april-showers' },
-		{ title: 'Adore You', slug: 'adore-you' },
-		{ title: 'This Is On You', slug: 'this-is-on-you-1' },
-		{ title: 'This Is On You', slug: 'this-is-on-you' },
-		{ title: 'Favourite Ex', slug: 'favourite-ex' },
-		// { title: "Stay Young (Acoustic)", slug: "stay-young-acoustic" },
-		{ title: 'Stay Young', slug: 'stay-young' },
-		{ title: 'Enough For You', slug: 'enough-for-you' },
-		{ title: 'You To You', slug: 'you-to-you' },
-		{ title: 'Architecture', slug: 'architecture-1' },
-		{ title: 'Feels Like This', slug: 'feels-like-this' },
-		{ title: 'Details', slug: 'details' },
-		{ title: 'In My Head', slug: 'in-my-head' },
-		{ title: "Best I'll Ever Sing", slug: 'best-ill-ever-sing-1' },
-		{ title: 'Worst of You', slug: 'worst-of-you' }
-	];
+	const todayKey = getLocalDateKey();
+	const currentTrack = getDailyTrack(todayKey);
+	const storageKey = `maisie-heardle:game:${todayKey}:${currentTrack.slug}`;
+	const statsKey = 'maisie-heardle:stats:v1';
 
-	type Track = { title: string; artist: string; url: string };
-	const tracks: Track[] = TRACKS_DATA.map(({ title, slug }) => ({
-		title,
-		artist: ARTIST_NAME,
-		url: `https://soundcloud.com/${SC_USER}/${slug}`
-	}));
-
-	// ─── SEED & PICK TRACK ────────────────────────────────────────────────────────
-	const todaySeed = moment().format('YYYYMMDD');
-
-	const rng = seedrandom(todaySeed);
-
-	const currentTrack = tracks[Math.floor(rng() * tracks.length)];
-
-	// ─── SEGMENTS ───────────────────────────────────────────────────────────────
-	const SEGMENT_INCREMENTS = [2, 1, 2, 3, 4, 5]; // seconds
+	const SEGMENT_INCREMENTS = [2, 1, 2, 3, 4, 5];
 	let total = 0;
-	const segmentDurations = SEGMENT_INCREMENTS.map((inc) => {
-		total += inc * 1000;
+	const segmentDurations = SEGMENT_INCREMENTS.map((increment) => {
+		total += increment * 1000;
 		return total;
 	});
 	const TOTAL_MS = segmentDurations.at(-1)!;
 	const TOTAL_SECONDS = TOTAL_MS / 1000;
 	const maxAttempts = SEGMENT_INCREMENTS.length;
-	$: boundaries = segmentDurations.map((ms) => ms / 1000).slice(0, -1);
 
-	// ─── STATE&TIMERS ─────────────────────────────────────────────────────────
-	type Info = { status: 'skip' | 'wrong' | 'correct'; title?: string };
-	let attemptInfos: Info[] = [];
+	type AttemptInfo = { status: 'skip' | 'wrong' | 'correct'; title?: string };
+	type SavedGame = {
+		attemptInfos: AttemptInfo[];
+		attemptCount: number;
+		gameOver: boolean;
+		message: string;
+		won: boolean;
+		statsRecorded: boolean;
+	};
+	type Stats = {
+		played: number;
+		wins: number;
+		streak: number;
+		maxStreak: number;
+		distribution: number[];
+	};
+
+	let attemptInfos: AttemptInfo[] = [];
 	let attemptCount = 0;
 	let gameOver = false;
 	let message = '';
+	let won = false;
+	let statsRecorded = false;
+	let stats: Stats = {
+		played: 0,
+		wins: 0,
+		streak: 0,
+		maxStreak: 0,
+		distribution: Array(maxAttempts).fill(0)
+	};
 
 	let iframeElement: HTMLIFrameElement;
-	let widget: any;
+	let widget: SoundCloudWidget;
 	let widgetReady = false;
+	let volume = 80;
 	let loading = true;
+	let widgetError = '';
 	let artworkUrl = '';
 	let isPlaying = false;
 	let currentPosition = 0;
-	let snippetTimeout: ReturnType<typeof setTimeout>;
 	let progressInterval: ReturnType<typeof setInterval>;
 	let fullDuration = 0;
+	let vinylRotation = 0;
+	let lastFrameTime = 0;
+	let animationFrameId: number;
+	let vinylElement: HTMLDivElement;
+	let waveformHeights = [4, 4, 4, 4, 4, 4, 4];
+	let waveformInterval: ReturnType<typeof setInterval>;
 
-	let skipInProgress = false;
 	let isWarmingUp = false;
 	let showHowTo = false;
 	let showInfo = false;
+	let globalGamesPlayed: number | null = null;
 	let darkMode = false;
 	let userInput = '';
 	let suggestions: Track[] = [];
 	let selectedTrack: Track | null = null;
 	let inputEl: HTMLInputElement;
+	let hydrated = false;
+	let shareMessage = '';
+	let suggestionArtwork: Record<string, string> = {};
+	let requestedSuggestionSlugs = '';
 
-	// ─── COUNTDOWN ───────────────────────────────────────────────────────────────
 	let timeLeft = '';
 	let countdownInterval: ReturnType<typeof setInterval>;
-	function updateTime() {
-		const now = new Date();
-		const midnight = new Date(now);
-		midnight.setHours(24, 0, 0, 0);
-		const diff = midnight.getTime() - now.getTime();
-		const h = String(Math.floor(diff / 3600000)).padStart(2, '0');
-		const m = String(Math.floor((diff % 3600000) / 60000)).padStart(2, '0');
-		const s = String(Math.floor((diff % 60000) / 1000)).padStart(2, '0');
-		timeLeft = `${h}:${m}:${s}`;
-	}
+	let compactLayout = false;
+	let attemptHistoryEl: HTMLDivElement;
+	let gameGridEl: HTMLDivElement;
+	let layoutObserver: ResizeObserver | undefined;
 
-	// ─── FILL%&NEXTSEGMENT ───────────────────────────────────────────────────
-	$: fillPercent = (() => {
-		const raw = gameOver
-			? (currentPosition / fullDuration) * 100
-			: (currentPosition / TOTAL_MS) * 100;
-		return Math.min(raw, 100);
-	})();
+	const boundaries = segmentDurations.map((ms) => ms / 1000).slice(0, -1);
+	$: activeLimit = gameOver ? fullDuration || TOTAL_MS : segmentDurations[attemptCount] || TOTAL_MS;
+	$: progressDuration = gameOver ? fullDuration || TOTAL_MS : TOTAL_MS;
+	$: fillPercent = Math.min((currentPosition / progressDuration) * 100, 100);
+	$: unlockedSeconds = Math.round((segmentDurations[attemptCount] || TOTAL_MS) / 1000);
 	$: nextIncrementSec =
 		attemptCount < SEGMENT_INCREMENTS.length - 1 ? SEGMENT_INCREMENTS[attemptCount + 1] : 0;
-
-	function formatTime(ms: number) {
-		const s = Math.floor(ms / 1000);
-		return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+	$: remainingAttempts = Array.from(
+		{ length: Math.max(maxAttempts - attemptInfos.length, 0) },
+		(_, index) => attemptInfos.length + index + 1
+	);
+	$: canSubmit = Boolean(userInput.trim()) && !gameOver && !loading && !widgetError;
+	$: resultLabel = won ? `${attemptCount}/${maxAttempts}` : `X/${maxAttempts}`;
+	$: suggestions =
+		userInput && !selectedTrack
+			? tracks
+					.filter((track) =>
+						normalizeTrackTitle(track.title).includes(normalizeTrackTitle(userInput))
+					)
+					.slice(0, 6)
+			: [];
+	$: if (hydrated) {
+		void loadSuggestionArtwork(suggestions);
+	}
+	$: if (hydrated) {
+		saveGame({
+			attemptInfos,
+			attemptCount,
+			gameOver,
+			message,
+			won,
+			statsRecorded
+		});
 	}
 
-	function startPolling() {
-		isPlaying = true;
-		skipInProgress = false; // clear guard once new snippet starts
-		clearInterval(progressInterval);
-		progressInterval = setInterval(() => {
-			if (!widget) return;
-			widget.getPosition((pos: number) => {
-				currentPosition = pos;
-			});
-		}, 100);
+	$: {
+		if (typeof window !== 'undefined') {
+			handlePlayStateChange(isPlaying);
+			driveWaveform(isPlaying);
+		}
 	}
 
-	function stopAllTimers() {
-		isPlaying = false;
-		clearInterval(progressInterval);
-		clearTimeout(snippetTimeout);
+	$: if (hydrated && gameOver) {
+		void tick().then(updateCompactLayout);
 	}
 
-	function ensurePlayState() {
-		if (!widget) return;
-		widget.isPaused((paused: boolean) => {
-			if (!paused && !isPlaying) {
-				// Widget is playing but our state says it's not
-				startPolling();
-			} else if (paused && isPlaying) {
-				// Widget is paused but our state says it's playing
-				stopAllTimers();
+	function updateCompactLayout() {
+		if (typeof window === 'undefined' || !gameOver || window.innerWidth < 1024) {
+			compactLayout = false;
+			return;
+		}
+
+		if (!attemptHistoryEl || !gameGridEl) return;
+
+		const attemptsNeedScroll =
+			attemptHistoryEl.scrollHeight > attemptHistoryEl.clientHeight + 1;
+
+		const previous = compactLayout;
+		compactLayout = false;
+
+		requestAnimationFrame(() => {
+			const gridOverflow = gameGridEl.scrollHeight > gameGridEl.clientHeight + 1;
+			compactLayout = attemptsNeedScroll || gridOverflow;
+			if (compactLayout !== previous && compactLayout) {
+				requestAnimationFrame(updateCompactLayout);
 			}
 		});
 	}
 
-	// ─── WIDGET SET‑UP ───────────────────────────────────────────────────────────
-	onMount(async () => {
-		// Initialize dark mode
+	onMount(() => {
 		darkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
-		
-		// load SC API if missing
-		if (typeof window.SC === 'undefined') {
-			await new Promise<void>((resolve, reject) => {
-				const tag = document.createElement('script');
-				tag.src = 'https://w.soundcloud.com/player/api.js';
-				tag.async = true;
-				tag.onload = () => resolve();
-				tag.onerror = () => reject(new Error('Failed to load SC API'));
-				document.head.appendChild(tag);
-			});
+		stats = loadStats();
+		loadSavedGame();
+		const savedVol = localStorage.getItem('heardle-volume');
+		if (savedVol !== null) {
+			volume = parseInt(savedVol);
 		}
+		hydrated = true;
 
-		window
-			.matchMedia('(prefers-color-scheme: dark)')
-			.addEventListener('change', (e) => (darkMode = e.matches));
+		const colorPreference = window.matchMedia('(prefers-color-scheme: dark)');
+		const onPreferenceChange = (event: MediaQueryListEvent) => (darkMode = event.matches);
+		colorPreference.addEventListener('change', onPreferenceChange);
 
 		updateTime();
 		countdownInterval = setInterval(updateTime, 1000);
+		void initializeWidget();
+		void loadDailyTrackArtwork();
+		void loadGlobalGamesPlayed();
 
-		widget = SC.Widget(iframeElement);
+		if (typeof ResizeObserver !== 'undefined') {
+			layoutObserver = new ResizeObserver(() => updateCompactLayout());
+		}
+		const onResize = () => updateCompactLayout();
+		window.addEventListener('resize', onResize);
 
-		// READY
-		widget.bind(SC.Widget.Events.READY, () => {
-			widget.getDuration((d: number) => {
-				fullDuration = d;
+		return () => {
+			colorPreference.removeEventListener('change', onPreferenceChange);
+			layoutObserver?.disconnect();
+			window.removeEventListener('resize', onResize);
+		};
+	});
+
+	$: if (attemptHistoryEl && gameGridEl && layoutObserver) {
+		layoutObserver.observe(attemptHistoryEl);
+		layoutObserver.observe(gameGridEl);
+		updateCompactLayout();
+	}
+
+	async function loadGlobalGamesPlayed() {
+		try {
+			const incrementedKey = `maisie-heardle:global-count-incremented:${todayKey}`;
+			const alreadyCounted = Boolean(localStorage.getItem(incrementedKey));
+			const url = alreadyCounted
+				? '/api/stats/games-played'
+				: '/api/stats/games-played?increment=1';
+
+			const res = await fetch(url);
+			if (res.ok) {
+				const data = (await res.json()) as { count?: number };
+				globalGamesPlayed = data.count ?? 0;
+				if (!alreadyCounted) {
+					localStorage.setItem(incrementedKey, 'true');
+				}
+			} else {
+				globalGamesPlayed = -1;
+			}
+		} catch (err) {
+			console.error('Failed to update global games played counter:', err);
+			globalGamesPlayed = -1;
+		}
+	}
+
+	async function loadDailyTrackArtwork() {
+		try {
+			const response = await fetch(
+				`/api/soundcloud/oembed?url=${encodeURIComponent(currentTrack.url)}`
+			);
+			if (response.ok) {
+				const data = (await response.json()) as { thumbnailUrl?: string };
+				if (data.thumbnailUrl) {
+					artworkUrl = data.thumbnailUrl;
+				}
+			}
+		} catch (error) {
+			console.error('Failed to load daily track artwork:', error);
+		}
+	}
+
+	async function initializeWidget() {
+		try {
+			await loadSoundCloudApi();
+			const soundcloud = window.SC;
+			if (!soundcloud) throw new Error('SoundCloud player API did not initialize.');
+
+			widget = soundcloud.Widget(iframeElement);
+			bindWidgetEvents(soundcloud);
+		} catch (error) {
+			loading = false;
+			widgetError =
+				error instanceof Error
+					? error.message
+					: 'The SoundCloud player could not be loaded. Please try again.';
+		}
+	}
+
+	onDestroy(() => {
+		stopAllTimers();
+		clearInterval(countdownInterval);
+		if (widget?.unbind && window.SC?.Widget?.Events) {
+			Object.values(window.SC.Widget.Events).forEach((eventName) => widget.unbind(eventName));
+		}
+		if (typeof cancelAnimationFrame !== 'undefined') {
+			cancelAnimationFrame(animationFrameId);
+		}
+		clearInterval(waveformInterval);
+	});
+
+	function driveWaveform(playing: boolean) {
+		clearInterval(waveformInterval);
+		if (playing) {
+			// Seed with an initial burst
+			waveformHeights = waveformHeights.map(() => 4 + Math.random() * 24);
+			waveformInterval = setInterval(() => {
+				waveformHeights = waveformHeights.map((prev) => {
+					// Organic: weighted blend of previous height + new random target
+					const target = 3 + Math.random() * 28;
+					const inertia = 0.3 + Math.random() * 0.35;
+					return prev * inertia + target * (1 - inertia);
+				});
+			}, 120);
+		} else {
+			waveformHeights = [4, 4, 4, 4, 4, 4, 4];
+		}
+	}
+
+	function handleVolumeChange(e: Event) {
+		const target = e.target as HTMLInputElement;
+		volume = parseInt(target.value);
+		if (typeof window !== 'undefined') {
+			localStorage.setItem('heardle-volume', volume.toString());
+		}
+		if (widget && widget.setVolume) {
+			widget.setVolume(volume);
+		}
+	}
+
+	function handlePlayStateChange(playing: boolean) {
+		if (!vinylElement) return;
+		if (playing) {
+			vinylElement.style.transition = 'none';
+			lastFrameTime = 0;
+			if (typeof requestAnimationFrame !== 'undefined') {
+				cancelAnimationFrame(animationFrameId);
+				animationFrameId = requestAnimationFrame(spinVinyl);
+			}
+		} else {
+			if (typeof cancelAnimationFrame !== 'undefined') {
+				cancelAnimationFrame(animationFrameId);
+			}
+
+			if (gameOver) {
+				vinylElement.style.transition = 'none';
+				vinylElement.style.transform = `rotate(${vinylRotation}deg)`;
+			} else {
+				const duration = Math.max(800, Math.min(800 + (vinylRotation / 360) * 300, 2500));
+				vinylElement.style.transition = `transform ${duration}ms cubic-bezier(0.15, 0.85, 0.35, 1)`;
+				vinylElement.style.transform = 'rotate(0deg)';
+				vinylRotation = 0;
+			}
+		}
+	}
+
+	function spinVinyl(timestamp: number) {
+		if (!lastFrameTime) lastFrameTime = timestamp;
+		const dt = timestamp - lastFrameTime;
+		lastFrameTime = timestamp;
+
+		if (isPlaying && vinylElement) {
+			vinylRotation = vinylRotation + 0.10285 * dt;
+			vinylElement.style.transform = `rotate(${vinylRotation}deg)`;
+			if (typeof requestAnimationFrame !== 'undefined') {
+				animationFrameId = requestAnimationFrame(spinVinyl);
+			}
+		}
+	}
+
+	function loadSoundCloudApi() {
+		if (window.SC) return Promise.resolve();
+
+		return new Promise<void>((resolve, reject) => {
+			const existing = document.querySelector<HTMLScriptElement>(
+				'script[src="https://w.soundcloud.com/player/api.js"]'
+			);
+
+			if (existing) {
+				existing.addEventListener('load', () => resolve(), { once: true });
+				existing.addEventListener('error', () => reject(new Error('Failed to load SoundCloud.')), {
+					once: true
+				});
+				return;
+			}
+
+			const tag = document.createElement('script');
+			tag.src = 'https://w.soundcloud.com/player/api.js';
+			tag.async = true;
+			tag.onload = () => resolve();
+			tag.onerror = () => reject(new Error('Failed to load SoundCloud.'));
+			document.head.appendChild(tag);
+		});
+	}
+
+	function bindWidgetEvents(soundcloud: SoundCloudApi) {
+		const events = soundcloud.Widget.Events;
+
+		widget.bind(events.READY, () => {
+			widget.setVolume(volume);
+			widget.getDuration((duration: number) => {
+				fullDuration = duration;
 			});
-			widget.getCurrentSound((sound: any) => {
-				artworkUrl = sound?.artwork_url || '';
+			widget.getCurrentSound((sound: { artwork_url?: string }) => {
+				if (sound?.artwork_url) {
+					artworkUrl = sound.artwork_url;
+				}
 			});
-			// warm up - play/pause to enable mobile autoplay with longer delays
+
 			isWarmingUp = true;
 			setTimeout(() => {
 				widget.play();
@@ -282,7 +412,6 @@
 						widget.seekTo(0);
 						loading = false;
 						widgetReady = true;
-						// Ensure we're in stopped state
 						isPlaying = false;
 						currentPosition = 0;
 						isWarmingUp = false;
@@ -291,85 +420,99 @@
 			}, 500);
 		});
 
-		// PLAY
-		widget.bind(SC.Widget.Events.PLAY, () => {
-			// Ignore warmup events
-			if (isWarmingUp) return;
-			
-			// Always sync state when widget starts playing
-			if (!isPlaying) {
-				startPolling();
-			}
+		widget.bind(events.PLAY, () => {
+			if (!isWarmingUp && !isPlaying) startPolling();
 		});
 
-		// PAUSE
-		widget.bind(SC.Widget.Events.PAUSE, () => {
-			// Ignore warmup events
+		widget.bind(events.PAUSE, () => {
 			if (isWarmingUp) return;
-			
-			// Skip logic takes priority
-			if (skipInProgress) {
-				stopAllTimers();
-				playSegment(false);
-				return;
-			}
 
-			// Always sync state when widget pauses
-			if (isPlaying) {
-				stopAllTimers();
-			}
+			if (isPlaying) stopAllTimers();
 		});
 
-		// FINISH
-		widget.bind(SC.Widget.Events.FINISH, () => {
+		widget.bind(events.FINISH, () => {
 			stopAllTimers();
 			currentPosition = gameOver ? fullDuration : segmentDurations[attemptCount];
 		});
 
-		// PLAY_PROGRESS
-		widget.bind(SC.Widget.Events.PLAY_PROGRESS, (e: { currentPosition: number }) => {
-			if (!isPlaying) return;
+		widget.bind(events.PLAY_PROGRESS, (event) => {
+			if (!isPlaying || !event) return;
 			const limit = gameOver ? fullDuration : segmentDurations[attemptCount];
-			currentPosition = e.currentPosition;
-			if (e.currentPosition >= limit) {
-				widget.pause(); // will call PAUSE -> stopAllTimers
+			currentPosition = event.currentPosition;
+			if (event.currentPosition >= limit) {
+				widget.pause();
 				currentPosition = limit;
 			}
 		});
-	});
 
-	onDestroy(() => {
-		stopAllTimers();
-		clearInterval(countdownInterval);
-		if (widget?.unbind) Object.values(SC.Widget.Events).forEach((ev) => widget.unbind(ev));
-	});
+		if (events.ERROR) {
+			widget.bind(events.ERROR, () => {
+				stopAllTimers();
+				loading = false;
+				widgetError = 'SoundCloud could not play today’s song. Try reloading the page.';
+			});
+		}
+	}
 
-	// ─── GAME ACTIONS ───────────────────────────────────────────────────────────
+	function updateTime() {
+		const now = new Date();
+		const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime();
+		const diff = midnight - now.getTime();
+		const h = String(Math.floor(diff / 3_600_000)).padStart(2, '0');
+		const m = String(Math.floor((diff % 3_600_000) / 60_000)).padStart(2, '0');
+		const s = String(Math.floor((diff % 60_000) / 1000)).padStart(2, '0');
+		timeLeft = `${h}:${m}:${s}`;
+	}
+
+	function formatTime(ms: number) {
+		const seconds = Math.floor(ms / 1000);
+		return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+	}
+
+	function startPolling() {
+		isPlaying = true;
+		clearInterval(progressInterval);
+		progressInterval = setInterval(() => {
+			if (!widget) return;
+			widget.getPosition((position: number) => {
+				currentPosition = position;
+			});
+		}, 100);
+	}
+
+	function stopAllTimers() {
+		isPlaying = false;
+		clearInterval(progressInterval);
+	}
+
+	function ensurePlayState() {
+		if (!widget) return;
+		widget.isPaused((paused: boolean) => {
+			if (!paused && !isPlaying) {
+				startPolling();
+			} else if (paused && isPlaying) {
+				stopAllTimers();
+			}
+		});
+	}
+
 	function playSegment(seekToStart = true) {
-		if (!widgetReady || loading) return;
+		if (!widgetReady || loading || widgetError) return;
 		stopAllTimers();
 		if (seekToStart && !gameOver) {
 			currentPosition = 0;
 			widget.seekTo(0);
 		}
-		// Longer delay to ensure seek completes and state is clean
-		setTimeout(() => {
-			widget.play();
-			// Don't start polling immediately, let PLAY event handle it
-		}, 100);
+		setTimeout(() => widget.play(), 100);
 	}
 
 	function togglePlayPause() {
-		if (!widgetReady || loading) return;
-		
-		// Sync state before toggling
+		if (!widgetReady || loading || widgetError) return;
 		ensurePlayState();
-		
+
 		if (isPlaying) {
 			widget.pause();
 		} else {
-			// When game is over, continue from current position
-			// When game is active, restart from beginning
 			playSegment(!gameOver);
 		}
 	}
@@ -380,416 +523,1396 @@
 		stopAllTimers();
 		currentPosition = 0;
 		widget.seekTo(0);
-		if (wasPlaying) {
-			// If it was playing, continue playing from start
-			setTimeout(() => {
-				widget.play();
-				// Let PLAY event handle startPolling
-			}, 150);
-		}
+		if (wasPlaying) setTimeout(() => widget.play(), 150);
 	}
 
-	function toggleDark() {
-		darkMode = !darkMode;
+	function seekFinishedSong(event: MouseEvent | KeyboardEvent) {
+		if (!widgetReady || !gameOver || !fullDuration) return;
+
+		let ratio: number;
+
+		if (event instanceof KeyboardEvent) {
+			const step = event.shiftKey ? 10_000 : 5_000;
+			if (event.key === 'ArrowLeft') {
+				event.preventDefault();
+				seekToPosition(currentPosition - step);
+				return;
+			}
+			if (event.key === 'ArrowRight') {
+				event.preventDefault();
+				seekToPosition(currentPosition + step);
+				return;
+			}
+			if (event.key === 'Home') {
+				event.preventDefault();
+				seekToPosition(0);
+				return;
+			}
+			if (event.key === 'End') {
+				event.preventDefault();
+				seekToPosition(fullDuration);
+				return;
+			}
+			return;
+		}
+
+		const bounds =
+			event.currentTarget instanceof HTMLElement
+				? event.currentTarget.getBoundingClientRect()
+				: null;
+		if (!bounds) return;
+
+		ratio = Math.min(Math.max((event.clientX - bounds.left) / bounds.width, 0), 1);
+		seekToPosition(ratio * fullDuration);
+	}
+
+	function seekToPosition(position: number) {
+		const nextPosition = Math.min(Math.max(position, 0), fullDuration);
+		const wasPlaying = isPlaying;
+		currentPosition = nextPosition;
+		widget.seekTo(nextPosition);
+
+		if (wasPlaying) {
+			setTimeout(() => widget.play(), 75);
+		}
 	}
 
 	function skipIntro() {
-		if (!widgetReady || gameOver) return;
+		if (!widgetReady || gameOver || widgetError) return;
 
 		attemptInfos = [...attemptInfos, { status: 'skip' }];
-		attemptCount++;
-		userInput = '';
-		selectedTrack = null;
+		attemptCount += 1;
+		clearGuess();
 
 		if (attemptCount >= maxAttempts) {
-			revealAnswer();
-			return; // nothing more to do
+			finishGame(false);
+			return;
 		}
 
-		if (isPlaying) {
-			skipInProgress = true;
-			clearTimeout(snippetTimeout);
-			widget.pause(); // PAUSE handler will launch the next snippet
-		} else {
-			stopAllTimers(); // just in case something is still polling
-			playSegment(true); // start from beginning if not playing
+		if (!isPlaying) {
+			currentPosition = 0;
+			playSegment(true);
 		}
 	}
 
 	function submitGuess() {
-		if (!widgetReady || gameOver || !userInput.trim()) return;
-		if (!selectedTrack && suggestions.length) {
-			selectedTrack =
-				suggestions.find((t) => t.title.toLowerCase() === userInput.toLowerCase()) ||
-				suggestions[0];
-		}
-		if (!selectedTrack) return;
+		if (!canSubmit) return;
 
-		attemptCount++;
-		const ans = currentTrack.title.toLowerCase();
-		if (selectedTrack.title.toLowerCase() === ans) {
+		const exactMatch = tracks.find(
+			(track) => normalizeTrackTitle(track.title) === normalizeTrackTitle(userInput)
+		);
+		const guessedTrack = selectedTrack || exactMatch || suggestions[0];
+		if (!guessedTrack) return;
+
+		attemptCount += 1;
+		if (normalizeTrackTitle(guessedTrack.title) === normalizeTrackTitle(currentTrack.title)) {
 			attemptInfos = [...attemptInfos, { status: 'correct', title: currentTrack.title }];
-			gameOver = true;
-			message = `✅ Correct! It was “${currentTrack.title}.” You got it ${
-				attemptCount === maxAttempts
-					? 'on the last try! Close one!'
-					: `in ${attemptCount} ${attemptCount === 1 ? 'try' : 'tries'}.`
-			}`;
-			stopAllTimers();
-			widget.pause();
+			finishGame(true);
+			return;
+		}
+
+		attemptInfos = [...attemptInfos, { status: 'wrong', title: guessedTrack.title }];
+		clearGuess();
+
+		if (attemptCount >= maxAttempts) {
+			finishGame(false);
 		} else {
-			attemptInfos = [...attemptInfos, { status: 'wrong', title: selectedTrack.title }];
-			userInput = '';
-			selectedTrack = null;
-			if (attemptCount >= maxAttempts) revealAnswer();
+			stopAllTimers();
+			widget?.pause();
+			currentPosition = 0;
 		}
 	}
 
-	function revealAnswer() {
+	function finishGame(didWin: boolean) {
+		won = didWin;
 		gameOver = true;
-		message = `❌ Out of tries! It was “${currentTrack.title}.”`;
+		message = didWin
+			? `Correct. It was “${currentTrack.title}.”`
+			: `Out of tries. It was “${currentTrack.title}.”`;
 		stopAllTimers();
-		widget.pause();
+		widget?.pause();
+
+		if (!statsRecorded) {
+			stats = recordStats(didWin, attemptCount);
+			statsRecorded = true;
+		}
 	}
 
-	function onInputKeydown(e: KeyboardEvent) {
-		if (e.key === 'Enter' && !gameOver) {
-			e.preventDefault();
+	function clearGuess() {
+		userInput = '';
+		selectedTrack = null;
+		shareMessage = '';
+	}
+
+	async function loadSuggestionArtwork(nextSuggestions: Track[]) {
+		const slugKey = nextSuggestions.map((track) => track.slug).join('|');
+		if (slugKey === requestedSuggestionSlugs) return;
+		requestedSuggestionSlugs = slugKey;
+
+		const missing = nextSuggestions.filter((track) => suggestionArtwork[track.slug] === undefined);
+		if (!missing.length) return;
+
+		const entries = await Promise.all(
+			missing.map(async (track) => {
+				try {
+					const response = await fetch(
+						`/api/soundcloud/oembed?url=${encodeURIComponent(track.url)}`
+					);
+					if (!response.ok) return [track.slug, ''] as const;
+					const data = (await response.json()) as { thumbnailUrl?: string };
+					return [track.slug, data.thumbnailUrl ?? ''] as const;
+				} catch {
+					return [track.slug, ''] as const;
+				}
+			})
+		);
+
+		suggestionArtwork = {
+			...suggestionArtwork,
+			...Object.fromEntries(entries)
+		};
+	}
+
+	function onInputKeydown(event: KeyboardEvent) {
+		if (event.key === 'Enter' && canSubmit) {
+			event.preventDefault();
 			submitGuess();
 		}
 	}
 
-	function selectSuggestion(s: Track) {
-		selectedTrack = s;
-		userInput = s.title;
+	function selectSuggestion(track: Track) {
+		selectedTrack = track;
+		userInput = track.title;
 		suggestions = [];
 		inputEl.blur();
 	}
 
-	$: suggestions =
-		userInput && !selectedTrack
-			? tracks.filter((t) => t.title.toLowerCase().includes(userInput.toLowerCase())).slice(0, 5)
-			: [];
+	async function shareResult() {
+		shareMessage = '';
+		const text = buildShareText();
+
+		try {
+			if (navigator.share) {
+				await navigator.share({ text });
+				shareMessage = 'Shared.';
+				return;
+			}
+
+			await navigator.clipboard.writeText(text);
+			shareMessage = 'Copied result.';
+		} catch {
+			shareMessage = 'Could not share from this browser.';
+		}
+	}
+
+	function buildShareText() {
+		const rows = attemptInfos
+			.map((attempt) => {
+				if (attempt.status === 'correct') return '🟩';
+				if (attempt.status === 'wrong') return '🟥';
+				return '🟦';
+			})
+			.join('');
+
+		return `Heardle - ${ARTIST_NAME} ${todayKey} ${resultLabel}\n${rows}\n${window?.location?.origin ?? ''}`;
+	}
+
+	function loadSavedGame() {
+		try {
+			const saved = localStorage.getItem(storageKey);
+			if (!saved) return;
+
+			const parsed = JSON.parse(saved) as SavedGame;
+			attemptInfos = Array.isArray(parsed.attemptInfos) ? parsed.attemptInfos : [];
+			attemptCount = Math.min(Math.max(parsed.attemptCount || 0, 0), maxAttempts);
+			gameOver = Boolean(parsed.gameOver);
+			message = parsed.message || '';
+			won = Boolean(parsed.won);
+			statsRecorded = Boolean(parsed.statsRecorded);
+		} catch {
+			localStorage.removeItem(storageKey);
+		}
+	}
+
+	function saveGame(game: SavedGame) {
+		localStorage.setItem(storageKey, JSON.stringify(game));
+	}
+
+	function loadStats(): Stats {
+		try {
+			const saved = localStorage.getItem(statsKey);
+			if (!saved) throw new Error('No stats yet.');
+			const parsed = JSON.parse(saved) as Stats;
+			return {
+				played: parsed.played || 0,
+				wins: parsed.wins || 0,
+				streak: parsed.streak || 0,
+				maxStreak: parsed.maxStreak || 0,
+				distribution: Array.from(
+					{ length: maxAttempts },
+					(_, index) => parsed.distribution?.[index] || 0
+				)
+			};
+		} catch {
+			return {
+				played: 0,
+				wins: 0,
+				streak: 0,
+				maxStreak: 0,
+				distribution: Array(maxAttempts).fill(0)
+			};
+		}
+	}
+
+	function recordStats(didWin: boolean, attempts: number) {
+		const nextStats = {
+			...stats,
+			played: stats.played + 1,
+			wins: stats.wins + (didWin ? 1 : 0),
+			streak: didWin ? stats.streak + 1 : 0,
+			maxStreak: didWin ? Math.max(stats.maxStreak, stats.streak + 1) : stats.maxStreak,
+			distribution: [...stats.distribution]
+		};
+
+		if (didWin) nextStats.distribution[Math.max(Math.min(attempts - 1, maxAttempts - 1), 0)] += 1;
+		localStorage.setItem(statsKey, JSON.stringify(nextStats));
+		return nextStats;
+	}
 </script>
 
-<!-- How to Play Modal -->
 {#if showHowTo}
-	<div class="fixed inset-0 z-50 flex items-center justify-center">
-		<div class="absolute inset-0 bg-black/40"></div>
+	<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
 		<div
-			class="relative w-4/5 max-w-md rounded-lg p-8 text-center"
-			style="
-        background: {darkMode ? COLORS.text : COLORS.background};
-        color:      {darkMode ? COLORS.background : COLORS.text}
-      "
+			role="dialog"
+			aria-modal="true"
+			aria-labelledby="how-to-title"
+			class="w-full max-w-md rounded-lg border p-6 shadow-2xl"
+			style="background: {darkMode ? '#1f1f1f' : COLORS.panel}; color: {darkMode
+				? '#fffaf7'
+				: COLORS.text}; border-color: {COLORS.primary}"
 		>
-			<h2 class="mb-4 text-2xl font-bold uppercase" style="color: {COLORS.primary}">How to Play</h2>
-			<ul class="space-y-4 text-base">
-				<li>🎵 Play the snippet.</li>
-				<li>🔊 Skips & wrongs unlock more.</li>
-				<li>👍 Guess in as few tries as possible!</li>
-			</ul>
-			<button
-				class="mt-6 rounded px-6 py-2 font-semibold"
-				style="
-          background: {COLORS.primary};
-          color:      {darkMode ? COLORS.text : COLORS.background}
-        "
-				on:click={() => (showHowTo = false)}
-			>
-				Close
-			</button>
+			<div class="mb-5 flex items-start justify-between gap-4">
+				<h2 id="how-to-title" class="text-2xl font-extrabold">How to play</h2>
+				<button
+					type="button"
+					aria-label="Close how to play"
+					class="rounded-full p-1 transition hover:scale-105"
+					on:click={() => (showHowTo = false)}
+				>
+					<Icon src={XMark} class="h-6 w-6" />
+				</button>
+			</div>
+			<ol class="space-y-3 text-sm leading-6">
+				<li><strong>1.</strong> Press play and identify the song from the unlocked snippet.</li>
+				<li><strong>2.</strong> A skip or wrong guess unlocks a longer clip from the start.</li>
+				<li><strong>3.</strong> Finish in as few attempts as possible and share your result.</li>
+			</ol>
 		</div>
 	</div>
 {/if}
 
-<!-- Info Modal -->
 {#if showInfo}
-	<div class="fixed inset-0 z-50 flex items-center justify-center">
-		<div class="absolute inset-0 bg-black/40"></div>
+	<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
 		<div
-			class="relative w-4/5 max-w-md space-y-4 rounded-lg p-8"
-			style="background:{darkMode ? COLORS.text : COLORS.background}; color:{darkMode
-				? COLORS.background
-				: COLORS.text}"
+			role="dialog"
+			aria-modal="true"
+			aria-labelledby="info-title"
+			class="w-full max-w-lg rounded-lg border p-6 shadow-2xl"
+			style="background: {darkMode ? '#1f1f1f' : COLORS.panel}; color: {darkMode
+				? '#fffaf7'
+				: COLORS.text}; border-color: {COLORS.secondary}"
 		>
-			<p class="font-semibold">{ARTIST_NAME} – Test your knowledge!</p>
-			<p>All songs used are copyrighted and belong to {ARTIST_NAME}.</p>
-			<p>I do not, and never will, collect any of your personal data.</p>
-
-			<hr class="my-4" style="border-color:{darkMode ? COLORS.background : COLORS.text}" />
-
-			<p class="text-xs" style="color:{COLORS.accent}">
-				Prepared with SoundCloud, Svelte, Tailwind CSS, Inter font, svelte-hero-icons, and moment.js<br
-				/>
-				Game version: 3.1.0
-			</p>
-
-			<!-- Added links -->
-			<p class="text-xs">
-				<a
-					href="https://github.com/SoPat712/maisie-heardle"
-					target="_blank"
-					rel="noopener noreferrer"
-					class="underline hover:text-{COLORS.primary}"
+			<div class="mb-5 flex items-start justify-between gap-4">
+				<div>
+					<p class="text-xs font-bold uppercase" style="color: {COLORS.secondary}">
+						Daily artist Heardle
+					</p>
+					<h2 id="info-title" class="text-2xl font-extrabold">{ARTIST_NAME}</h2>
+				</div>
+				<button
+					type="button"
+					aria-label="Close info"
+					class="rounded-full p-1 transition hover:scale-105"
+					on:click={() => (showInfo = false)}
 				>
-					View Source on GitHub
-				</a>
-			</p>
-			<p class="text-xs">
-				<a
-					href="https://joshpatra.me/"
-					target="_blank"
-					rel="noopener noreferrer"
-					class="underline hover:text-{COLORS.primary}"
-				>
-					My Portfolio
-				</a>
-			</p>
+					<Icon src={XMark} class="h-6 w-6" />
+				</button>
+			</div>
 
-			<p class="text-sm italic">New track in <strong>{timeLeft}</strong></p>
-			<button
-				class="mt-4 rounded px-6 py-2 font-semibold"
-				style="background:{COLORS.primary}; color:{darkMode ? COLORS.text : COLORS.background}"
-				on:click={() => (showInfo = false)}
+			<div class="grid grid-cols-3 gap-3 text-center">
+				<div class="rounded border p-3" style="border-color: {COLORS.primary}">
+					<div class="text-2xl font-extrabold">{stats.played}</div>
+					<div class="text-xs uppercase" style="color: {COLORS.muted}">Played</div>
+				</div>
+				<div class="rounded border p-3" style="border-color: {COLORS.secondary}">
+					<div class="text-2xl font-extrabold">
+						{stats.played ? Math.round((stats.wins / stats.played) * 100) : 0}%
+					</div>
+					<div class="text-xs uppercase" style="color: {COLORS.muted}">Wins</div>
+				</div>
+				<div class="rounded border p-3" style="border-color: {COLORS.accent}">
+					<div class="text-2xl font-extrabold">{stats.streak}</div>
+					<div class="text-xs uppercase" style="color: {COLORS.muted}">Streak</div>
+				</div>
+			</div>
+
+			<p class="mt-5 text-sm leading-6">
+				Songs belong to {ARTIST_NAME}. This app stores only your local game progress and local stats
+				in this browser.
+			</p>
+			<p class="mt-3 text-sm">
+				Next track in <strong>{timeLeft}</strong>
+			</p>
+			<a
+				href="https://github.com/SoPat712/maisie-heardle"
+				target="_blank"
+				rel="noopener noreferrer"
+				class="mt-5 inline-flex text-sm font-semibold underline"
+				style="color: {COLORS.primary}"
 			>
-				Close
-			</button>
+				View source
+			</a>
 		</div>
 	</div>
 {/if}
 
-<!-- Main UI -->
-<div
-	class="fixed inset-0 flex flex-col overflow-y-auto"
-	style="
-    background: {darkMode ? COLORS.text : COLORS.background};
-    color:      {darkMode ? COLORS.background : COLORS.text}
-  "
+<main
+	class={`heardle-page h-[100dvh] overflow-hidden px-3 py-2 sm:px-6 sm:py-4 md:px-8 ${darkMode ? 'heardle-dark' : ''}`}
 >
-	<!-- Header -->
-	<div class="flex items-center justify-between px-4 pt-4">
-		<div class="flex space-x-2">
-			<button on:click={() => (showInfo = true)}>
-				<Icon src={InformationCircle} class="h-6 w-6" style="color: {COLORS.primary}" />
-			</button>
-			<button on:click={toggleDark}>
-				<Icon src={darkMode ? Sun : Moon} class="h-6 w-6" style="color: {COLORS.primary}" />
-			</button>
-		</div>
-		<h1 class="flex-1 text-center font-serif text-lg font-bold whitespace-nowrap sm:text-3xl">
-			Heardle – {ARTIST_NAME}
-		</h1>
-		<button on:click={() => (showHowTo = true)}>
-			<Icon src={QuestionMarkCircle} class="h-6 w-6" style="color: {COLORS.secondary}" />
-		</button>
-	</div>
-
-	<hr class="mx-4 my-3" style="border-color: {darkMode ? COLORS.background : COLORS.text}" />
-
-	<!-- Attempts -->
-	{#if !gameOver}
-		<div class="mb-6 space-y-2 px-4">
-			{#each attemptInfos as info}
-				<div
-					class="flex h-12 items-center rounded border px-3 font-semibold"
-					style="
-            border-color: {info.status === 'skip'
-						? COLORS.primary
-						: info.status === 'wrong'
-							? COLORS.accent
-							: COLORS.secondary};
-            color: {info.status === 'skip'
-						? COLORS.primary
-						: info.status === 'wrong'
-							? COLORS.accent
-							: COLORS.secondary}
-          "
+	<div class="mx-auto flex h-full max-w-5xl flex-col">
+		<header class="deck-header">
+			<div class="flex items-center gap-2">
+				<button
+					type="button"
+					aria-label="Game information and stats"
+					title="Info and stats"
+					class="deck-icon-button"
+					on:click={() => (showInfo = true)}
 				>
-					{#if info.status === 'skip'}▢ Skipped
-					{:else if info.status === 'wrong'}☒ {info.title}
-					{:else}✓ {info.title}{/if}
+					<Icon src={InformationCircle} class="h-5 w-5" />
+				</button>
+				<button
+					type="button"
+					aria-label={darkMode ? 'Use light mode' : 'Use dark mode'}
+					title={darkMode ? 'Light mode' : 'Dark mode'}
+					class="deck-icon-button deck-icon-button-alt"
+					on:click={() => (darkMode = !darkMode)}
+				>
+					<Icon src={darkMode ? Sun : Moon} class="h-5 w-5" />
+				</button>
+			</div>
+
+			<div class="deck-title min-w-0 text-center">
+				<p class="deck-kicker">Daily listening test</p>
+				<h1 class="truncate text-xl font-extrabold sm:text-2xl">Heardle - {ARTIST_NAME}</h1>
+				<p class="text-xs">New song in {timeLeft}</p>
+			</div>
+
+			<div class="flex items-center gap-2.5 sm:gap-3.5">
+				<div class="flex flex-col items-end leading-none select-none text-right">
+					<span class="text-[8px] sm:text-[9px] font-extrabold tracking-widest text-zinc-500 uppercase mb-1">Played</span>
+					<span class="text-sm sm:text-base font-black tracking-tight" style="color: {COLORS.primary}">
+						{globalGamesPlayed === null
+							? '...'
+							: globalGamesPlayed < 0
+								? '—'
+								: globalGamesPlayed.toLocaleString()}
+					</span>
 				</div>
-			{/each}
-			{#each Array(maxAttempts - attemptInfos.length) as _}
-				<div
-					class="h-12 rounded border"
-					style="border-color: {darkMode ? COLORS.background : COLORS.text}"
-				></div>
-			{/each}
-		</div>
-	{/if}
 
-	<!-- Win/Lose Card -->
-	{#if gameOver}
-		<div class="mb-6 px-4">
-			<a
-				href={`https://song.link/${currentTrack.url}`}
-				target="_blank"
-				rel="noopener"
-				class={`flex items-center overflow-hidden rounded-lg border-2 ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
-				style="border-color: {COLORS.primary}"
-			>
-				{#if artworkUrl}
-					<img
-						src={artworkUrl.replace('-large', '-t500x500')}
-						alt="{currentTrack.title} cover"
-						class="h-16 w-16 flex-shrink-0 object-cover"
-					/>
-				{/if}
-				<div class="px-4 py-2">
-					<div class="font-semibold" style="color: {COLORS.primary}">{currentTrack.title}</div>
-					<div class="text-sm" style="color: {COLORS.accent}">{ARTIST_NAME}</div>
-				</div>
-			</a>
-			<p class="mt-4 text-center font-medium">{message}</p>
-		</div>
-	{/if}
+				<button
+					type="button"
+					aria-label="How to play"
+					title="How to play"
+					class="deck-icon-button"
+					on:click={() => (showHowTo = true)}
+				>
+					<Icon src={QuestionMarkCircle} class="h-5 w-5" />
+				</button>
+			</div>
+		</header>
 
-	<!-- Invisible iframe for mobile autoplay -->
-	<iframe
-		bind:this={iframeElement}
-		src={`https://w.soundcloud.com/player/?url=${encodeURIComponent(currentTrack.url)}`}
-		style="position:absolute; width:0; height:0; border:0; overflow:hidden; visibility:hidden;"
-		allow="autoplay"
-		title="preview player"
-	></iframe>
-
-	<!-- Bottom‑pinned controls -->
-	<div class="mt-auto px-4 pb-4">
-		<!-- Progress bar -->
+		<!-- Responsive layout: split columns on lg+ screens -->
 		<div
-			class="relative mb-2 w-full overflow-hidden rounded border"
-			style="height:1.25rem; border-color: {darkMode ? COLORS.background : COLORS.text}"
+			bind:this={gameGridEl}
+			class="game-grid mt-3 flex min-h-0 flex-1 flex-col justify-between gap-3 sm:gap-4 lg:mt-4 lg:grid lg:grid-cols-12 lg:gap-x-6 lg:gap-y-4"
+			class:game-grid-compact={gameOver && compactLayout}
 		>
-			{#if !gameOver}
-				<!-- Background segments showing unlocked/locked areas -->
-				{#each segmentDurations as segEnd, idx}
-					{@const segStart = idx === 0 ? 0 : segmentDurations[idx - 1]}
-					{@const isUnlocked = idx <= attemptCount}
-					<div
-						class="absolute top-0 h-full transition-all duration-500 ease-out"
-						style="
-							left: {(segStart / TOTAL_MS) * 100}%;
-							width: {isUnlocked ? ((segEnd - segStart) / TOTAL_MS) * 100 : 0}%;
-							background: {darkMode
-							? 'rgba(255, 255, 255, 0.15)'
-							: 'rgba(0, 0, 0, 0.1)'};
-						"
-					></div>
-				{/each}
-			{/if}
-			<!-- Active progress fill -->
-			<div
-				class="absolute top-0 left-0 h-full transition-[width] duration-100"
-				style="width: {fillPercent}%; background: {COLORS.accent}; z-index: 10;"
-			></div>
-			{#if !gameOver}
-				<!-- Segment dividers -->
-				{#each boundaries as b}
-					<div
-						class="absolute top-0 bottom-0"
-						style="left: {(b / TOTAL_SECONDS) * 100}%; border-left:1px solid {darkMode
-							? COLORS.background
-							: COLORS.text}; z-index: 20;"
-					></div>
-				{/each}
-			{/if}
-		</div>
-		<div class="mb-4 flex justify-between text-xs">
-			<span>{formatTime(currentPosition)}</span>
-			<span>{formatTime(gameOver ? fullDuration : TOTAL_MS)}</span>
-		</div>
+			<section class="attempt-panel order-1 min-h-0 lg:col-span-6" class:attempt-panel-game-over={gameOver}>
+				<p class="status-strip">
+					<span class="status-chip">
+						{gameOver ? 'Answer revealed' : `${unlockedSeconds}s unlocked`}
+					</span>
+					<span class="status-note">
+						{gameOver ? 'Full playback' : `${maxAttempts - attemptCount} guesses left`}
+					</span>
+				</p>
 
-		<!-- Play/Pause (and Rewind when game over) -->
-		<div class="mb-4 flex justify-center items-center gap-4">
-			{#if gameOver}
-				<button
-					on:click={rewindSong}
-					class="flex h-12 w-12 items-center justify-center rounded-full border-2 disabled:opacity-50"
-					style="border-color: {loading ? '#888888' : COLORS.primary}"
-					disabled={loading}
-					title="Restart from beginning"
+				<div
+					bind:this={attemptHistoryEl}
+					class="attempt-history space-y-1.5 sm:space-y-2"
+					aria-label="Guess history"
 				>
-					<Icon
-						src={ArrowPath}
-						class="h-6 w-6"
-						style="color: {loading ? '#888888' : COLORS.primary}"
-					/>
-				</button>
-			{/if}
-			<button
-				on:click={togglePlayPause}
-				class="flex h-16 w-16 items-center justify-center rounded-full border-2 disabled:opacity-50"
-				style="border-color: {loading ? '#888888' : COLORS.accent}"
-				disabled={loading}
-			>
-				<Icon
-					src={isPlaying ? Pause : Play}
-					class="h-8 w-8"
-					style="color: {loading ? '#888888' : COLORS.accent}"
-				/>
-			</button>
-		</div>
-
-		<!-- Guess & Skip/Submit -->
-		{#if !gameOver}
-			<div class="relative mb-4 overflow-visible">
-				<input
-					bind:this={inputEl}
-					type="text"
-					placeholder="Type song title…"
-					bind:value={userInput}
-					on:keydown={onInputKeydown}
-					on:focus={() => (selectedTrack = null)}
-					class="w-full rounded border px-3 py-2"
-					style="border-color: {COLORS.primary}; background: {darkMode
-						? COLORS.text
-						: COLORS.background}; color: {darkMode ? COLORS.background : COLORS.text}"
-				/>
-				{#if suggestions.length}
-					<ul
-						class="absolute bottom-full left-0 z-10 mb-1 max-h-36 w-full overflow-y-auto rounded border"
-						style="border-color: {darkMode ? COLORS.background : COLORS.text}; background: {darkMode
-							? COLORS.text
-							: COLORS.background}"
-					>
-						{#each suggestions as s}
-							<li>
-								<button
-									type="button"
-									class="w-full px-3 py-2 text-left"
-									style="color: {darkMode ? COLORS.background : COLORS.text}"
-									on:click={() => selectSuggestion(s)}
-								>
-									{s.title} – <span style="opacity:0.7">{s.artist}</span>
-								</button>
-							</li>
+						{#each attemptInfos as info, index (`${index}-${info.status}-${info.title ?? 'skip'}`)}
+							<div
+								class="attempt-row attempt-row-filled flex h-8 items-center justify-between rounded px-3 text-xs font-semibold sm:h-10 sm:text-sm md:h-11"
+								style="
+									--attempt-color: {info.status === 'skip'
+									? COLORS.primary
+									: info.status === 'wrong'
+										? COLORS.danger
+										: COLORS.success};
+									color: {info.status === 'skip'
+									? COLORS.primary
+									: info.status === 'wrong'
+										? COLORS.danger
+										: COLORS.success};
+								"
+							>
+								<span class="truncate pr-4">
+									{#if info.status === 'skip'}Skipped
+									{:else if info.status === 'wrong'}{info.title}
+									{:else}{info.title}{/if}
+								</span>
+								<span class="flex-shrink-0 text-[10px] uppercase">Try {index + 1}</span>
+							</div>
 						{/each}
-					</ul>
-				{/if}
+						{#each remainingAttempts as attemptNumber (attemptNumber)}
+							<div
+								class="attempt-row attempt-row-empty flex h-8 items-center rounded px-3 text-xs sm:h-10 sm:text-sm md:h-11"
+							>
+								Attempt {attemptNumber}
+							</div>
+						{/each}
+				</div>
+			</section>
+
+			<!-- Right Column: Spinning Vinyl Player (Desktop only) -->
+			<div class="vinyl-col order-2 hidden min-h-0 flex-col items-end justify-start lg:col-span-6 lg:flex">
+				<div class="vinyl-turntable-container flex w-full flex-col items-end justify-start">
+					<div
+						class="turntable-base relative flex h-[440px] w-[480px] items-center justify-center rounded-2xl shadow-xl transition-all duration-300 select-none"
+						style="
+							background: {darkMode ? '#1e1e1e' : '#f7f8f7'};
+							border: 1px solid var(--deck-border);
+						"
+					>
+						<!-- Vintage Start/Stop (Play/Pause) Button (top left) -->
+						<div class="absolute top-6 left-8 flex flex-col items-center gap-1 select-none z-40" style="width: 28px;">
+							<span class="text-[9px] font-extrabold tracking-widest text-zinc-500 uppercase">Start</span>
+							<button
+								type="button"
+								on:click={togglePlayPause}
+								disabled={loading || Boolean(widgetError)}
+								class="vintage-play-btn flex h-10 w-10 items-center justify-center rounded-full bg-zinc-950 border border-zinc-800 shadow-[inset_0_2px_4px_rgba(0,0,0,0.8)] focus:outline-none"
+								aria-label={isPlaying ? 'Pause audio' : 'Play audio'}
+								title={isPlaying ? 'Pause' : 'Play'}
+							>
+								<div
+									class="flex h-7 w-7 items-center justify-center rounded-full border transition-all duration-150"
+									class:active-btn={isPlaying}
+									style="
+										background: linear-gradient(180deg, #f3f4f6 0%, #d1d5db 40%, #9ca3af 100%);
+										border-color: #9ca3af;
+										box-shadow: 0 3px 6px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.6);
+									"
+								>
+									{#if isPlaying}
+										<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#374151" class="h-3 w-3">
+											<path fill-rule="evenodd" d="M6.75 5.25a.75.75 0 01.75-.75H9a.75.75 0 01.75.75v13.5a.75.75 0 01-.75.75H7.5a.75.75 0 01-.75-.75V5.25zm7.5 0A.75.75 0 0115 4.5h1.5a.75.75 0 01.75.75v13.5a.75.75 0 01-.75.75H15a.75.75 0 01-.75-.75V5.25z" clip-rule="evenodd" />
+										</svg>
+									{:else}
+										<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#374151" class="h-3.5 w-3.5 ml-0.5">
+											<path fill-rule="evenodd" d="M4.5 5.653c0-1.426 1.529-2.33 2.779-1.643l11.54 6.348c1.295.712 1.295 2.573 0 3.285L7.28 19.991c-1.25.687-2.779-.217-2.779-1.643V5.653z" clip-rule="evenodd" />
+										</svg>
+									{/if}
+								</div>
+							</button>
+						</div>
+
+						<!-- Platter (clickable to toggle play/pause as a fallback) -->
+						<button
+							type="button"
+							on:click={togglePlayPause}
+							disabled={loading || Boolean(widgetError)}
+							class="platter absolute flex h-[400px] w-[400px] items-center justify-center rounded-full border cursor-pointer focus:outline-none z-30"
+							style="
+								left: 40px;
+								top: 20px;
+								background: #0d5b84;
+								box-shadow: inset 0 4px 10px rgba(0,0,0,0.35), 0 1px 3px rgba(255,255,255,0.08);
+								border-color: {darkMode ? '#27272a' : '#3f3f46'};
+							"
+							title={isPlaying ? 'Pause' : 'Play'}
+						>
+							<!-- Vinyl record wrapper -->
+							<div class="relative flex h-[360px] w-[360px] items-center justify-center rounded-full overflow-hidden">
+								<!-- Vinyl record (spins) -->
+								<div
+									bind:this={vinylElement}
+									class="vinyl-record absolute inset-0 flex items-center justify-center rounded-full shadow-lg"
+								>
+									<!-- Track separators (wider gaps) -->
+									<div class="absolute inset-[36px] rounded-full border border-black/30 pointer-events-none"></div>
+									<div class="absolute inset-[72px] rounded-full border border-black/30 pointer-events-none"></div>
+									<div class="absolute inset-[108px] rounded-full border border-black/30 pointer-events-none"></div>
+
+									<!-- Vinyl Center Label (spins with record) -->
+									<div
+										class="vinyl-label absolute top-1/2 left-1/2 z-10 flex h-36 w-36 -translate-x-1/2 -translate-y-1/2 items-center justify-center overflow-hidden rounded-full border-2 border-black/25"
+										style="background: linear-gradient(135deg, {COLORS.primary}, {COLORS.secondary});"
+									>
+										{#if gameOver && artworkUrl}
+											<img
+												src={artworkUrl.replace('-large', '-t500x500')}
+												alt="Artwork"
+												class="h-full w-full object-cover"
+											/>
+										{:else}
+											<div class="absolute inset-0 flex flex-col items-center justify-between py-6 select-none text-white uppercase text-center">
+												<span class="text-[17px] font-black tracking-[0.25em] mt-1.5">Heardle</span>
+												<span class="text-[8px] font-bold tracking-[0.3em] opacity-80 mb-1">Maisie Peters</span>
+											</div>
+										{/if}
+									</div>
+								</div>
+
+								<!-- Stationary light reflection overlay (sheen stays still) -->
+								<div class="vinyl-sheen absolute inset-0 rounded-full pointer-events-none z-20"></div>
+							</div>
+
+							<!-- Spindle center peg (STATIONARY in center of platter) -->
+							<div
+								class="absolute top-1/2 left-1/2 z-30 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border shadow-md flex items-center justify-center"
+								style="
+									background: {darkMode ? '#27272a' : '#d4d4d8'};
+									border-color: {darkMode ? '#3f3f46' : '#a1a1aa'};
+								"
+							>
+								<!-- Small center peg tip -->
+								<div class="h-1.5 w-1.5 rounded-full bg-zinc-900"></div>
+							</div>
+						</button>
+
+						<!-- Tonearm (S-shaped arm with pivot at 445,70 on a 480x440 canvas) -->
+						<div class="tonearm pointer-events-none absolute inset-0 h-full w-full z-40">
+							<svg viewBox="0 0 480 440" class="h-full w-full drop-shadow-[0_8px_12px_rgba(0,0,0,0.45)]">
+								<defs>
+									<!-- Metallic linear gradient for the chrome tonearm -->
+									<linearGradient id="chrome-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+										<stop offset="0%" stop-color="#f3f4f6" />
+										<stop offset="30%" stop-color="#9ca3af" />
+										<stop offset="50%" stop-color="#ffffff" />
+										<stop offset="70%" stop-color="#4b5563" />
+										<stop offset="100%" stop-color="#e5e7eb" />
+									</linearGradient>
+									<!-- Darker metallic for pivot and weight -->
+									<linearGradient id="dark-metal-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+										<stop offset="0%" stop-color="#71717a" />
+										<stop offset="50%" stop-color="#3f3f46" />
+										<stop offset="100%" stop-color="#18181b" />
+									</linearGradient>
+								</defs>
+
+								<!-- 1. Tonearm base / Rest cradle (STATIONARY) -->
+								<!-- Gimbal base -->
+								<circle cx="445" cy="70" r="22" fill="url(#dark-metal-grad)" stroke="#111" stroke-width="2" />
+								<circle cx="445" cy="70" r="14" fill="#18181b" stroke="#333" stroke-width="1" />
+								<!-- Arm Rest structure -->
+								<!-- Post -->
+								<line x1="452" y1="200" x2="452" y2="225" stroke="#4b5563" stroke-width="3" stroke-linecap="round" />
+								<!-- U-clip cradle -->
+								<path d="M 444 200 Q 452 206 460 200" fill="none" stroke="#4b5563" stroke-width="2.5" stroke-linecap="round" />
+
+								<!-- 2. Rotating Tonearm Assembly -->
+								<g
+									style="transform: rotate({isPlaying
+										? '22deg'
+										: '0deg'}); transform-origin: 445px 70px; transition: transform 750ms cubic-bezier(0.25, 1, 0.5, 1);"
+								>
+									<!-- Counterweight shaft (extends behind pivot) -->
+									<line x1="445" y1="70" x2="440" y2="30" stroke="#9ca3af" stroke-width="4.5" stroke-linecap="round" />
+									<!-- Counterweight dial ring -->
+									<rect x="430" y="24" width="20" height="12" rx="2" fill="url(#dark-metal-grad)" stroke="#111" stroke-width="1.5" />
+									<!-- Counterweight weight block -->
+									<rect x="432" y="16" width="16" height="8" rx="1" fill="#09090b" stroke="#333" stroke-width="1" />
+
+									<!-- Metallic 2-segment straight Tonearm tube -->
+									<path
+										d="M 445 70 L 456 180 L 445 235"
+										stroke="url(#chrome-grad)"
+										stroke-width="3.5"
+										fill="none"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+									/>
+
+									<!-- Cartridge collar connector -->
+									<circle cx="445" cy="235" r="3.5" fill="#3f3f46" stroke="#111" stroke-width="0.5" />
+
+									<!-- Headshell (Classic Technics style angled cartridge) -->
+									<!-- Headshell body -->
+									<path
+										d="M 443 235 L 448 235 L 441 257 L 435 255 Z"
+										fill="#1f2937"
+										stroke="#111"
+										stroke-width="0.75"
+									/>
+									<!-- Finger lift (curving to the right) -->
+									<path
+										d="M 447 241 C 454 241, 456 245, 455 249"
+										fill="none"
+										stroke="#9ca3af"
+										stroke-width="1"
+										stroke-linecap="round"
+									/>
+									<!-- Stylus body (orange accent cartridge tip) -->
+									<polygon
+										points="435,255 441,257 439,261 435,260"
+										fill={COLORS.accent}
+										stroke="#111"
+										stroke-width="0.5"
+									/>
+									<!-- Tiny metallic stylus tip/needle -->
+									<line x1="435" y1="260" x2="433" y2="262" stroke="#d1d5db" stroke-width="1" />
+								</g>
+							</svg>
+						</div>
+
+						<!-- Dynamic Island Waveform (bottom right) -->
+						<div class="absolute bottom-6 right-8 flex items-center gap-1.5 h-10 w-24 justify-center pointer-events-none select-none z-40">
+							{#each waveformHeights as h, i}
+								<div
+									class="waveform-bar rounded-full"
+									style="
+										background: {COLORS.accent};
+										width: 5px;
+										height: {h}px;
+										transition: height 130ms ease-out;
+									"
+								></div>
+							{/each}
+						</div>
+
+						<!-- Vintage Volume Fader (bottom left, vertical) -->
+						<div class="absolute bottom-6 left-8 flex flex-col items-center gap-1 select-none z-40" style="width: 28px;">
+							<span class="text-[9px] font-extrabold tracking-widest text-zinc-500 uppercase">Vol</span>
+							<div class="relative w-8 h-20 flex items-center justify-center">
+								<input
+									type="range"
+									min="0"
+									max="100"
+									step="1"
+									value={volume}
+									on:input={handleVolumeChange}
+									disabled={loading || Boolean(widgetError)}
+									class="vintage-slider cursor-pointer"
+								/>
+							</div>
+						</div>
+					</div>
+				</div>
 			</div>
-			<div class="flex justify-between">
-				<button
-					on:click={skipIntro}
-					class="rounded px-4 py-2 font-semibold"
-					style="background: {COLORS.primary}; color: {COLORS.background}"
+
+			{#if gameOver}
+				<section
+					class="result-panel order-3 rounded p-3 sm:p-4"
+					style="--result-color: {won ? COLORS.success : COLORS.danger}"
 				>
-					{#if nextIncrementSec > 0}Skip (+{nextIncrementSec}s){:else}I don't know it{/if}
-				</button>
-				<button
-					on:click={submitGuess}
-					class="rounded px-4 py-2 font-semibold disabled:opacity-50"
-					style="background: {COLORS.secondary}; color: {COLORS.background}"
-					disabled={!userInput.trim()}
-				>
-					Submit
-				</button>
+					<div class="flex gap-3 sm:gap-4">
+						{#if artworkUrl}
+							<img
+								src={artworkUrl.replace('-large', '-t500x500')}
+								alt="{currentTrack.title} cover"
+								class="h-16 w-16 flex-shrink-0 rounded object-cover shadow-md sm:h-20 sm:w-20"
+							/>
+						{/if}
+						<div class="min-w-0 flex-1">
+							<p
+								class="text-xs font-bold uppercase"
+								style="color: {won ? COLORS.success : COLORS.danger}"
+							>
+								{won ? 'Solved' : 'Revealed'}
+								{resultLabel}
+							</p>
+							<h2 class="truncate text-lg font-extrabold sm:text-2xl">{currentTrack.title}</h2>
+							<p class="text-xs sm:text-sm" style="color: {darkMode ? '#cfc7c1' : COLORS.muted}">
+								{message}
+							</p>
+							<a
+								href={`https://song.link/${currentTrack.url}`}
+								target="_blank"
+								rel="noopener noreferrer"
+								class="mt-1 inline-flex text-xs font-semibold underline sm:mt-2 sm:text-sm"
+								style="color: {COLORS.primary}"
+							>
+								Open song links
+							</a>
+						</div>
+					</div>
+
+					<div class="mt-3 flex flex-wrap items-center gap-2 sm:mt-4 sm:gap-3">
+						<button
+							type="button"
+							class="share-button inline-flex items-center gap-2 rounded px-3 py-1.5 text-xs font-bold text-white transition hover:brightness-95 sm:px-4 sm:py-2 sm:text-sm"
+							on:click={shareResult}
+						>
+							<Icon src={Share} class="h-4 w-4 sm:h-5 sm:w-5" />
+							Share result
+						</button>
+						{#if shareMessage}
+							<span class="text-xs font-medium sm:text-sm" aria-live="polite">{shareMessage}</span
+							>
+						{/if}
+					</div>
+				</section>
+			{/if}
+
+			<!-- Bottom Row (Player Controls) -->
+			<div class="player-wrap order-4 flex-shrink-0">
+				<!-- Hidden SoundCloud player iframe -->
+				<iframe
+					bind:this={iframeElement}
+					src={`https://w.soundcloud.com/player/?url=${encodeURIComponent(currentTrack.url)}&show_artwork=false&visual=false`}
+					style="position:absolute; width:0; height:0; border:0; overflow:hidden; visibility:hidden;"
+					allow="autoplay"
+					title="SoundCloud preview player"
+				></iframe>
+
+				<!-- Control Deck (Audio player controls & input) -->
+				<section class="control-deck mt-auto">
+					{#if widgetError}
+						<div
+							class="mb-3 rounded border p-3 text-xs sm:text-sm"
+							role="alert"
+							style="border-color: {COLORS.danger}; color: {COLORS.danger}; background: {darkMode
+								? '#2b1717'
+								: '#fff1ef'}"
+						>
+							{widgetError}
+						</div>
+					{/if}
+
+					<div
+						class="progress-rail relative mb-1.5 h-5 w-full overflow-hidden rounded sm:mb-2 sm:h-7"
+						aria-label="Audio progress"
+					>
+						{#if !gameOver}
+							{#each segmentDurations as segmentEnd, index (segmentEnd)}
+								{@const segmentStart = index === 0 ? 0 : segmentDurations[index - 1]}
+								{@const isUnlocked = index <= attemptCount}
+								<div
+									class="absolute top-0 h-full transition-all duration-500 ease-out"
+									style="
+									left: {(segmentStart / TOTAL_MS) * 100}%;
+									width: {isUnlocked ? ((segmentEnd - segmentStart) / TOTAL_MS) * 100 : 0}%;
+									background: {darkMode ? 'rgba(255,255,255,0.12)' : 'rgba(18,127,179,0.12)'};
+								"
+								></div>
+							{/each}
+						{/if}
+						<div
+							class="absolute top-0 left-0 h-full transition-[width] duration-100"
+							style="width: {fillPercent}%; background: {COLORS.accent};"
+						></div>
+						{#if !gameOver}
+							{#each boundaries as boundary (boundary)}
+								<div
+									class="absolute top-0 bottom-0"
+									style="left: {(boundary / TOTAL_SECONDS) * 100}%; border-left:1px solid {darkMode
+										? '#fffaf7'
+										: COLORS.text}; opacity: 0.35;"
+								></div>
+							{/each}
+						{/if}
+						{#if gameOver}
+							<button
+								type="button"
+								class="absolute inset-0 z-20 h-full w-full cursor-pointer bg-transparent focus:ring-2 focus:outline-none"
+								style="--tw-ring-color: {COLORS.primary}"
+								aria-label="Seek finished song"
+								aria-valuemin="0"
+								aria-valuemax={Math.round((fullDuration || TOTAL_MS) / 1000)}
+								aria-valuenow={Math.round(currentPosition / 1000)}
+								role="slider"
+								title="Seek song"
+								on:click={seekFinishedSong}
+								on:keydown={seekFinishedSong}
+							></button>
+						{/if}
+					</div>
+
+					<div
+						class="mb-2 flex justify-between text-xs sm:mb-4"
+						style="color: {darkMode ? '#cfc7c1' : COLORS.muted}"
+					>
+						<span>{formatTime(currentPosition)}</span>
+						<span>{formatTime(progressDuration)}</span>
+					</div>
+
+					<div class="mb-3 flex items-center justify-center gap-4 sm:mb-4">
+						{#if gameOver}
+							<button
+								type="button"
+								on:click={rewindSong}
+								class="lg:hidden flex h-9 w-9 items-center justify-center rounded-full border-2 transition hover:scale-105 disabled:opacity-50 sm:h-12 sm:w-12"
+								style="border-color: {loading ? '#888888' : COLORS.primary}; color: {loading
+									? '#888888'
+									: COLORS.primary}"
+								disabled={loading}
+								aria-label="Restart song from beginning"
+								title="Restart song"
+							>
+								<Icon src={ArrowPath} class="h-4 w-4 sm:h-6 sm:w-6" />
+							</button>
+						{/if}
+						<button
+							type="button"
+							on:click={togglePlayPause}
+							class="lg:hidden flex h-12 w-12 items-center justify-center rounded-full border-2 transition hover:scale-105 disabled:opacity-50 sm:h-16 sm:w-16"
+							style="border-color: {loading || widgetError
+								? '#888888'
+								: COLORS.accent}; color: {loading || widgetError ? '#888888' : COLORS.accent}"
+							disabled={loading || Boolean(widgetError)}
+							aria-label={isPlaying ? 'Pause audio' : 'Play audio'}
+							title={isPlaying ? 'Pause' : 'Play'}
+						>
+							<Icon src={isPlaying ? Pause : Play} class="h-6 w-6 sm:h-8 sm:w-8" />
+						</button>
+					</div>
+
+					{#if loading && !widgetError}
+						<p
+							class="mb-3 animate-pulse text-center text-xs sm:text-sm"
+							style="color: {darkMode ? '#cfc7c1' : COLORS.muted}"
+							aria-live="polite"
+						>
+							Loading today’s song...
+						</p>
+					{/if}
+
+					{#if !gameOver}
+						<div class="relative mb-3 overflow-visible">
+							<label for="guess-input" class="sr-only">Song title</label>
+							<input
+								id="guess-input"
+								bind:this={inputEl}
+								type="text"
+								placeholder="Type a song title..."
+								bind:value={userInput}
+								on:keydown={onInputKeydown}
+								on:focus={() => (selectedTrack = null)}
+								autocomplete="off"
+								class="w-full rounded border px-3 py-2 text-sm transition outline-none focus:ring-2 sm:px-4 sm:py-3 sm:text-base"
+								style="border-color: {COLORS.primary}; background: {darkMode
+									? '#1d1d1d'
+									: COLORS.panel}; color: {darkMode
+									? '#fffaf7'
+									: COLORS.text}; --tw-ring-color: {COLORS.primary}"
+							/>
+							{#if suggestions.length}
+								<ul
+									class="absolute bottom-full left-0 z-10 mb-2 max-h-48 w-full overflow-y-auto rounded border shadow-lg sm:max-h-72"
+									style="border-color: {darkMode ? '#3d3d3d' : '#dcdcdc'}; background: {darkMode
+										? '#1d1d1d'
+										: COLORS.panel}"
+								>
+									{#each suggestions as suggestion (suggestion.slug)}
+										<li>
+											<button
+												type="button"
+												class="flex w-full items-center gap-3 px-3 py-2 text-left text-xs transition hover:bg-black/5 sm:text-sm"
+												style="color: {darkMode ? '#fffaf7' : COLORS.text}"
+												on:click={() => selectSuggestion(suggestion)}
+											>
+												{#if suggestionArtwork[suggestion.slug]}
+													<img
+														src={suggestionArtwork[suggestion.slug]}
+														alt=""
+														class="h-9 w-9 flex-none rounded object-cover sm:h-11 sm:w-11"
+														loading="lazy"
+													/>
+												{:else}
+													<span
+														class="flex h-9 w-9 flex-none items-center justify-center rounded text-xs font-bold text-white sm:h-11 sm:w-11 sm:text-sm"
+														style="background: {COLORS.primary}"
+													>
+														{suggestion.title.slice(0, 1)}
+													</span>
+												{/if}
+												<span class="min-w-0">
+													<span class="block truncate font-semibold">{suggestion.title}</span>
+													<span
+														class="block truncate text-[10px] sm:text-xs"
+														style="color: {darkMode ? '#bbb' : COLORS.muted}"
+													>
+														{suggestion.artist}
+													</span>
+												</span>
+											</button>
+										</li>
+									{/each}
+								</ul>
+							{/if}
+						</div>
+
+						<div class="flex gap-2 sm:gap-3">
+							<button
+								type="button"
+								on:click={skipIntro}
+								class="flex-1 rounded px-3 py-2 text-sm font-bold text-white transition hover:brightness-95 disabled:opacity-50 sm:px-4 sm:py-3 sm:text-base"
+								style="background: {COLORS.primary}"
+								disabled={loading || Boolean(widgetError)}
+							>
+								{#if nextIncrementSec > 0}Skip (+{nextIncrementSec}s){:else}I don’t know it{/if}
+							</button>
+							<button
+								type="button"
+								on:click={submitGuess}
+								class="flex-1 rounded px-3 py-2 text-sm font-bold text-white transition hover:brightness-95 disabled:opacity-50 sm:px-4 sm:py-3 sm:text-base"
+								style="background: {COLORS.secondary}"
+								disabled={!canSubmit}
+							>
+								Submit
+							</button>
+						</div>
+					{/if}
+				</section>
 			</div>
-		{/if}
+		</div>
 	</div>
-</div>
+</main>
 
 <style>
-	/* Tailwind in app.css handles spacing/layout */
+	.heardle-page {
+		--page-bg: #f7f8f7;
+		--page-fg: #171717;
+		--deck-bg: rgba(255, 255, 255, 0.92);
+		--deck-border: #d9dcdf;
+		--deck-muted: #5f6268;
+		--deck-shadow: 0 18px 45px rgba(20, 24, 28, 0.08);
+		--primary: #127fb3;
+		--secondary: #c43a84;
+		--accent: #f15a24;
+		--rail-bg: #ffffff;
+		--empty-row: #f7f8f7;
+		background: var(--page-bg);
+		color: var(--page-fg);
+	}
+
+	.heardle-page.heardle-dark {
+		--page-bg: #121212;
+		--page-fg: #fffaf7;
+		--deck-bg: rgba(29, 29, 29, 0.92);
+		--deck-border: #36393d;
+		--deck-muted: #bbb;
+		--deck-shadow: 0 18px 45px rgba(0, 0, 0, 0.26);
+		--rail-bg: #171717;
+		--empty-row: #191919;
+		background: var(--page-bg);
+	}
+
+	.deck-header,
+	.attempt-panel,
+	.control-deck,
+	.result-panel {
+		background: var(--deck-bg);
+		border: 1px solid var(--deck-border);
+		border-radius: 8px;
+		box-shadow: var(--deck-shadow);
+	}
+
+	.deck-header {
+		display: grid;
+		grid-template-columns: auto minmax(0, 1fr) auto;
+		align-items: center;
+		gap: 12px;
+		padding: 12px;
+	}
+
+	.deck-title {
+		color: var(--page-fg);
+	}
+
+	.deck-title p {
+		color: var(--deck-muted);
+	}
+
+	.deck-kicker {
+		margin: 0 0 2px;
+		font-size: 0.72rem;
+		font-weight: 800;
+		text-transform: uppercase;
+	}
+
+	.deck-icon-button {
+		display: inline-flex;
+		width: 40px;
+		height: 40px;
+		align-items: center;
+		justify-content: center;
+		border: 1px solid var(--deck-border);
+		border-radius: 8px;
+		background: var(--rail-bg);
+		color: var(--primary);
+		transition:
+			transform 140ms ease,
+			background 140ms ease,
+			border-color 140ms ease;
+	}
+
+	.deck-icon-button-alt {
+		color: var(--secondary);
+	}
+
+	.deck-icon-button:hover {
+		transform: translateY(-1px);
+		border-color: currentColor;
+	}
+
+	.attempt-panel {
+		display: flex;
+		flex-direction: column;
+		flex-grow: 1;
+	}
+
+	@media (min-width: 1024px) {
+		.attempt-panel {
+			height: 440px;
+			flex-grow: 0;
+			display: flex;
+			flex-direction: column;
+		}
+		.attempt-history {
+			flex: 1 1 auto;
+			min-height: 0;
+			overflow-y: auto;
+			display: flex;
+			flex-direction: column;
+		}
+		.attempt-row {
+			flex-grow: 1;
+			font-size: 1.1rem !important;
+		}
+
+		.game-grid:not(.game-grid-compact) .attempt-panel-game-over .attempt-row {
+			flex-grow: 0;
+			min-height: 2.25rem;
+		}
+
+		.game-grid:not(.game-grid-compact) .result-panel {
+			grid-column: 1 / -1;
+		}
+
+		.game-grid:not(.game-grid-compact) .player-wrap {
+			grid-column: 1 / -1;
+		}
+
+		.game-grid-compact .attempt-panel {
+			grid-column: 1 / span 6;
+			grid-row: 1;
+			height: auto;
+			max-height: min(440px, 42vh);
+		}
+
+		.game-grid-compact .vinyl-col {
+			grid-column: 7 / span 6;
+			grid-row: 1 / span 2;
+		}
+
+		.game-grid-compact .result-panel {
+			grid-column: 1 / span 6;
+			grid-row: 2;
+		}
+
+		.game-grid-compact .player-wrap {
+			grid-column: 1 / span 6;
+			grid-row: 3;
+		}
+
+		.game-grid-compact .attempt-history {
+			flex-grow: 0;
+			overflow-y: auto;
+		}
+
+		.game-grid-compact .attempt-row {
+			flex-grow: 0;
+			min-height: 2.25rem;
+		}
+	}
+
+	@media (min-width: 1024px) and (max-height: 820px) {
+		.game-grid-compact .attempt-row {
+			min-height: 2rem;
+			font-size: 0.95rem !important;
+		}
+
+		.game-grid-compact .result-panel {
+			padding: 10px 12px;
+		}
+
+		.game-grid-compact .result-panel h2 {
+			font-size: 1.1rem;
+		}
+	}
+
+	.attempt-panel,
+	.control-deck {
+		padding: 10px;
+	}
+
+	@media (min-width: 640px) {
+		.attempt-panel,
+		.control-deck {
+			padding: 16px;
+		}
+	}
+
+	@media (min-width: 768px) {
+		.deck-header {
+			padding: 16px 18px;
+		}
+
+		.attempt-panel,
+		.control-deck {
+			padding: 22px;
+		}
+	}
+
+	.status-strip {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		margin-bottom: 14px;
+		font-size: 0.9rem;
+	}
+
+	.status-chip {
+		display: inline-flex;
+		align-items: center;
+		border-radius: 999px;
+		padding: 5px 10px;
+		background: var(--primary);
+		color: #fff;
+		font-weight: 800;
+	}
+
+	.status-note {
+		color: var(--deck-muted);
+		font-weight: 650;
+	}
+
+	.attempt-row {
+		position: relative;
+		overflow: hidden;
+		border: 1px solid var(--deck-border);
+		background: var(--rail-bg);
+	}
+
+	.attempt-row-filled {
+		border-color: var(--attempt-color);
+		background: linear-gradient(90deg, var(--attempt-color) 0 6px, transparent 6px), var(--rail-bg);
+		padding-left: 16px;
+	}
+
+	.attempt-row-empty {
+		border-style: dashed;
+		background: var(--empty-row);
+		color: var(--deck-muted);
+	}
+
+	.result-panel {
+		border-color: var(--result-color);
+	}
+
+	.control-deck {
+		border-top: 4px solid var(--accent);
+	}
+
+	.progress-rail {
+		border: 1px solid var(--deck-border);
+		background: linear-gradient(180deg, rgba(0, 0, 0, 0.06), transparent 45%), var(--rail-bg);
+		box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.14);
+	}
+
+	.share-button {
+		background: var(--secondary);
+	}
+
+	@media (min-width: 768px) {
+		.attempt-row {
+			min-height: 52px;
+			font-size: 0.98rem;
+		}
+
+		.progress-rail {
+			height: 34px;
+		}
+	}
+
+	@media (max-width: 520px) {
+		.deck-header {
+			gap: 8px;
+			padding: 10px;
+		}
+
+		.deck-icon-button {
+			width: 36px;
+			height: 36px;
+		}
+
+		.deck-kicker {
+			display: none;
+		}
+
+		.status-strip {
+			align-items: flex-start;
+			flex-direction: column;
+			gap: 6px;
+		}
+	}
+
+	/* Spinning Vinyl Record Player Styles */
+	@keyframes spin {
+		0% {
+			transform: rotate(0deg);
+		}
+		100% {
+			transform: rotate(360deg);
+		}
+	}
+
+	.waveform-bar.animating {
+		animation: waveform-bounce ease-in-out infinite;
+	}
+
+	@keyframes waveform-bounce {
+		0%, 100% {
+			height: 4px;
+		}
+		50% {
+			height: 28px;
+		}
+	}
+
+	/* Vintage Vertical Volume Fader */
+	.vintage-slider {
+		-webkit-appearance: none;
+		appearance: none;
+		background: transparent;
+		outline: none;
+		position: absolute;
+		width: 80px; /* matches fader container height */
+		height: 20px; /* matches fader container width */
+		margin: 0;
+		padding: 0;
+		/* Rotate -90deg so left(0) is bottom, right(100) is top */
+		transform: rotate(-90deg);
+		transform-origin: center center;
+	}
+	.vintage-slider::-webkit-slider-runnable-track {
+		width: 100%;
+		height: 4px;
+		background: #111113;
+		border: 1px solid #333336;
+		border-radius: 2px;
+		box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.8);
+	}
+	.vintage-slider::-webkit-slider-thumb {
+		-webkit-appearance: none;
+		appearance: none;
+		width: 10px;
+		height: 18px;
+		/* Gradient horizontal so line appears vertical after rotation */
+		background: linear-gradient(90deg, #e4e4e7 0%, #a1a1aa 35%, #ef4444 45%, #ef4444 55%, #71717a 65%, #3f3f46 100%);
+		border: 1px solid #18181b;
+		border-radius: 1.5px;
+		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
+		cursor: pointer;
+		margin-top: -7px;
+	}
+	.vintage-slider::-moz-range-track {
+		width: 100%;
+		height: 4px;
+		background: #111113;
+		border: 1px solid #333336;
+		border-radius: 2px;
+		box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.8);
+	}
+	.vintage-slider::-moz-range-thumb {
+		width: 10px;
+		height: 18px;
+		background: linear-gradient(90deg, #e4e4e7 0%, #a1a1aa 35%, #ef4444 45%, #ef4444 55%, #71717a 65%, #3f3f46 100%);
+		border: 1px solid #18181b;
+		border-radius: 1.5px;
+		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
+		cursor: pointer;
+	}
+
+	/* Vintage Tactile Play Button */
+	.vintage-play-btn {
+		cursor: pointer;
+		background: #09090b;
+	}
+	.vintage-play-btn:hover > div {
+		background: linear-gradient(180deg, #ffffff 0%, #e5e7eb 40%, #d1d5db 100%) !important;
+		box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.8) !important;
+	}
+	.vintage-play-btn:active > div,
+	.vintage-play-btn > div.active-btn {
+		transform: scale(0.95) translateY(1px);
+		background: linear-gradient(180deg, #d1d5db 0%, #9ca3af 40%, #6b7280 100%) !important;
+		border-color: #6b7280 !important;
+		box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.4) !important;
+	}
+	.vintage-play-btn:disabled {
+		cursor: default;
+		opacity: 0.3;
+	}
+
+
+	.vinyl-record {
+		background:
+			radial-gradient(circle, #2d2d2d 20%, transparent 20%),
+			repeating-radial-gradient(
+				circle,
+				#202024 0px,
+				#111113 1px,
+				#202024 2px
+			);
+		box-shadow:
+			0 0 0 2px rgba(0, 0, 0, 0.6),
+			inset 0 0 20px rgba(0, 0, 0, 0.95),
+			0 12px 28px rgba(0, 0, 0, 0.65);
+	}
+
+	.vinyl-sheen {
+		background: conic-gradient(
+			from 120deg,
+			transparent 0%,
+			rgba(255, 255, 255, 0.04) 8%,
+			rgba(255, 255, 255, 0.12) 15%,
+			rgba(255, 255, 255, 0.04) 22%,
+			transparent 30%,
+			transparent 50%,
+			rgba(255, 255, 255, 0.04) 58%,
+			rgba(255, 255, 255, 0.12) 65%,
+			rgba(255, 255, 255, 0.04) 72%,
+			transparent 80%,
+			transparent 100%
+		);
+		mix-blend-mode: screen;
+		opacity: 0.85;
+	}
+
+	.vinyl-label {
+		box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.35);
+	}
+
+	.platter {
+		box-shadow:
+			inset 0 6px 15px rgba(0, 0, 0, 0.95),
+			0 1px 3px rgba(255, 255, 255, 0.08);
+	}
 </style>

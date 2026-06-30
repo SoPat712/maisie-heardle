@@ -4,7 +4,7 @@
 </script>
 
 <svelte:head>
-	<title>Heardle – Maisie Peters Edition</title>
+	<title>Heardle - Maisie Peters Edition</title>
 </svelte:head>
 
 <!-- Remove bg-black/text-white here so your game can supply its own background -->

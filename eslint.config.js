@@ -31,6 +31,9 @@ export default ts.config(
 				parser: ts.parser,
 				svelteConfig
 			}
+		},
+		rules: {
+			'@typescript-eslint/no-unused-vars': 'off'
 		}
 	}
 );

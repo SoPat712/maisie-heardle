@@ -115,9 +115,14 @@
 	let countdownInterval: ReturnType<typeof setInterval>;
 	let compactLayout = false;
 	let attemptHistoryEl: HTMLDivElement;
+	let attemptPanelEl: HTMLElement;
+	let resultPanelEl: HTMLElement;
 	let gameGridEl: HTMLDivElement;
 	let gameScrollEl: HTMLDivElement;
+	let gameBodyEl: HTMLDivElement;
+	let playerWrapEl: HTMLDivElement;
 	let layoutObserver: ResizeObserver | undefined;
+	let compactAttemptMaxHeight: number | null = null;
 
 	const boundaries = segmentDurations.map((ms) => ms / 1000).slice(0, -1);
 	$: activeLimit = gameOver ? fullDuration || TOTAL_MS : segmentDurations[attemptCount] || TOTAL_MS;
@@ -168,24 +173,41 @@
 	function updateCompactLayout() {
 		if (typeof window === 'undefined' || !gameOver || window.innerWidth < 1024) {
 			compactLayout = false;
+			compactAttemptMaxHeight = null;
 			return;
 		}
 
-		if (!attemptHistoryEl || !gameGridEl || !gameScrollEl) return;
+		if (!gameBodyEl || !playerWrapEl || !gameGridEl) return;
 
-		const attemptsNeedScroll =
-			attemptHistoryEl.scrollHeight > attemptHistoryEl.clientHeight + 1;
+		const contentBudget = gameBodyEl.clientHeight - playerWrapEl.offsetHeight;
+		const resultHeight = resultPanelEl?.offsetHeight ?? 0;
+		const gridStyles = getComputedStyle(gameGridEl);
+		const rowGap = Number.parseFloat(gridStyles.rowGap) || 16;
 
-		const previous = compactLayout;
-		compactLayout = false;
-
-		requestAnimationFrame(() => {
-			const scrollOverflow = gameGridEl.scrollHeight > gameScrollEl.clientHeight + 1;
-			compactLayout = attemptsNeedScroll || scrollOverflow;
-			if (compactLayout !== previous && compactLayout) {
-				requestAnimationFrame(updateCompactLayout);
+		if (!compactLayout) {
+			const shouldCompact = gameGridEl.offsetHeight > contentBudget + 1;
+			compactLayout = shouldCompact;
+			if (shouldCompact) {
+				void tick().then(updateCompactLayout);
+				return;
 			}
-		});
+			compactAttemptMaxHeight = null;
+			return;
+		}
+		{
+			const spaciousHeight = 440 + rowGap + resultHeight;
+			if (spaciousHeight <= contentBudget + 1) {
+				compactLayout = false;
+				compactAttemptMaxHeight = null;
+				return;
+			}
+		}
+
+		if (compactLayout && resultHeight > 0) {
+			compactAttemptMaxHeight = Math.max(140, contentBudget - resultHeight - rowGap);
+		} else {
+			compactAttemptMaxHeight = null;
+		}
 	}
 
 	onMount(() => {
@@ -221,10 +243,16 @@
 		};
 	});
 
-	$: if (attemptHistoryEl && gameGridEl && gameScrollEl && layoutObserver) {
-		layoutObserver.observe(attemptHistoryEl);
+	$: if (resultPanelEl && layoutObserver) {
+		layoutObserver.observe(resultPanelEl);
+		updateCompactLayout();
+	}
+
+	$: if (gameBodyEl && gameGridEl && playerWrapEl && layoutObserver) {
+		layoutObserver.observe(gameBodyEl);
 		layoutObserver.observe(gameGridEl);
-		layoutObserver.observe(gameScrollEl);
+		layoutObserver.observe(playerWrapEl);
+		if (attemptHistoryEl) layoutObserver.observe(attemptHistoryEl);
 		updateCompactLayout();
 	}
 
@@ -934,14 +962,23 @@
 			</div>
 		</header>
 
-		<div class="game-body mt-3 flex min-h-0 flex-1 flex-col lg:mt-4">
-			<div bind:this={gameScrollEl} class="game-scroll min-h-0 flex-1 overflow-y-auto pr-1">
+		<div bind:this={gameBodyEl} class="game-body mt-3 flex min-h-0 flex-1 flex-col lg:mt-4">
+			<div
+				bind:this={gameScrollEl}
+				class="game-scroll min-h-0 flex-1 overflow-y-auto pr-1"
+				class:game-scroll-ended={gameOver}
+			>
 				<div
 					bind:this={gameGridEl}
-					class="game-grid flex flex-col gap-3 sm:gap-4 lg:grid lg:grid-cols-12 lg:gap-x-6 lg:gap-y-4"
+					class="game-grid flex min-h-0 flex-col gap-3 sm:gap-4 lg:grid lg:grid-cols-12 lg:items-start lg:gap-x-6 lg:gap-y-4"
 					class:game-grid-compact={gameOver && compactLayout}
 				>
-			<section class="attempt-panel order-1 min-h-0 lg:col-span-6" class:attempt-panel-game-over={gameOver}>
+			<section
+				bind:this={attemptPanelEl}
+				class="attempt-panel order-1 min-h-0 lg:col-span-6"
+				class:attempt-panel-game-over={gameOver}
+				style={compactAttemptMaxHeight ? `max-height: ${compactAttemptMaxHeight}px` : undefined}
+			>
 				<p class="status-strip">
 					<span class="status-chip">
 						{gameOver ? 'Answer revealed' : `${unlockedSeconds}s unlocked`}
@@ -1219,6 +1256,7 @@
 
 			{#if gameOver}
 				<section
+					bind:this={resultPanelEl}
 					class="result-panel order-3 rounded p-3 sm:p-4"
 					style="--result-color: {won ? COLORS.success : COLORS.danger}"
 				>
@@ -1273,7 +1311,7 @@
 			</div>
 		</div>
 
-		<div class="player-wrap flex-shrink-0 pt-3 sm:pt-4">
+		<div bind:this={playerWrapEl} class="player-wrap flex-shrink-0 pt-3 sm:pt-4">
 				<!-- Hidden SoundCloud player iframe -->
 				<iframe
 					bind:this={iframeElement}
@@ -1550,6 +1588,16 @@
 		-webkit-overflow-scrolling: touch;
 	}
 
+	@media (min-width: 1024px) {
+		.game-scroll.game-scroll-ended {
+			overflow: hidden;
+		}
+	}
+
+	.game-grid {
+		align-content: start;
+	}
+
 	.player-wrap {
 		flex-shrink: 0;
 		width: 100%;
@@ -1633,7 +1681,7 @@
 			grid-column: 1 / span 6;
 			grid-row: 1;
 			height: auto;
-			max-height: min(440px, 42vh);
+			max-height: none;
 		}
 
 		.game-grid-compact .vinyl-col {

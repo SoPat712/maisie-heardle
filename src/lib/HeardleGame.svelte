@@ -116,6 +116,7 @@
 	let compactLayout = false;
 	let attemptHistoryEl: HTMLDivElement;
 	let gameGridEl: HTMLDivElement;
+	let gameScrollEl: HTMLDivElement;
 	let layoutObserver: ResizeObserver | undefined;
 
 	const boundaries = segmentDurations.map((ms) => ms / 1000).slice(0, -1);
@@ -170,7 +171,7 @@
 			return;
 		}
 
-		if (!attemptHistoryEl || !gameGridEl) return;
+		if (!attemptHistoryEl || !gameGridEl || !gameScrollEl) return;
 
 		const attemptsNeedScroll =
 			attemptHistoryEl.scrollHeight > attemptHistoryEl.clientHeight + 1;
@@ -179,8 +180,8 @@
 		compactLayout = false;
 
 		requestAnimationFrame(() => {
-			const gridOverflow = gameGridEl.scrollHeight > gameGridEl.clientHeight + 1;
-			compactLayout = attemptsNeedScroll || gridOverflow;
+			const scrollOverflow = gameGridEl.scrollHeight > gameScrollEl.clientHeight + 1;
+			compactLayout = attemptsNeedScroll || scrollOverflow;
 			if (compactLayout !== previous && compactLayout) {
 				requestAnimationFrame(updateCompactLayout);
 			}
@@ -220,9 +221,10 @@
 		};
 	});
 
-	$: if (attemptHistoryEl && gameGridEl && layoutObserver) {
+	$: if (attemptHistoryEl && gameGridEl && gameScrollEl && layoutObserver) {
 		layoutObserver.observe(attemptHistoryEl);
 		layoutObserver.observe(gameGridEl);
+		layoutObserver.observe(gameScrollEl);
 		updateCompactLayout();
 	}
 
@@ -879,8 +881,8 @@
 <main
 	class={`heardle-page h-[100dvh] overflow-hidden px-3 py-2 sm:px-6 sm:py-4 md:px-8 ${darkMode ? 'heardle-dark' : ''}`}
 >
-	<div class="mx-auto flex h-full max-w-5xl flex-col">
-		<header class="deck-header">
+	<div class="mx-auto flex h-full min-h-0 max-w-5xl flex-col">
+		<header class="deck-header flex-shrink-0">
 			<div class="flex items-center gap-2">
 				<button
 					type="button"
@@ -932,12 +934,13 @@
 			</div>
 		</header>
 
-		<!-- Responsive layout: split columns on lg+ screens -->
-		<div
-			bind:this={gameGridEl}
-			class="game-grid mt-3 flex min-h-0 flex-1 flex-col justify-between gap-3 sm:gap-4 lg:mt-4 lg:grid lg:grid-cols-12 lg:gap-x-6 lg:gap-y-4"
-			class:game-grid-compact={gameOver && compactLayout}
-		>
+		<div class="game-body mt-3 flex min-h-0 flex-1 flex-col lg:mt-4">
+			<div bind:this={gameScrollEl} class="game-scroll min-h-0 flex-1 overflow-y-auto pr-1">
+				<div
+					bind:this={gameGridEl}
+					class="game-grid flex flex-col gap-3 sm:gap-4 lg:grid lg:grid-cols-12 lg:gap-x-6 lg:gap-y-4"
+					class:game-grid-compact={gameOver && compactLayout}
+				>
 			<section class="attempt-panel order-1 min-h-0 lg:col-span-6" class:attempt-panel-game-over={gameOver}>
 				<p class="status-strip">
 					<span class="status-chip">
@@ -1267,9 +1270,10 @@
 					</div>
 				</section>
 			{/if}
+			</div>
+		</div>
 
-			<!-- Bottom Row (Player Controls) -->
-			<div class="player-wrap order-4 flex-shrink-0">
+		<div class="player-wrap flex-shrink-0 pt-3 sm:pt-4">
 				<!-- Hidden SoundCloud player iframe -->
 				<iframe
 					bind:this={iframeElement}
@@ -1280,7 +1284,7 @@
 				></iframe>
 
 				<!-- Control Deck (Audio player controls & input) -->
-				<section class="control-deck mt-auto">
+				<section class="control-deck">
 					{#if widgetError}
 						<div
 							class="mb-3 rounded border p-3 text-xs sm:text-sm"
@@ -1478,7 +1482,7 @@
 						</div>
 					{/if}
 				</section>
-			</div>
+		</div>
 		</div>
 	</div>
 </main>
@@ -1528,6 +1532,27 @@
 		align-items: center;
 		gap: 12px;
 		padding: 12px;
+		flex-shrink: 0;
+	}
+
+	.game-body {
+		display: flex;
+		flex-direction: column;
+		flex: 1 1 auto;
+		min-height: 0;
+	}
+
+	.game-scroll {
+		flex: 1 1 auto;
+		min-height: 0;
+		overflow-y: auto;
+		overscroll-behavior: contain;
+		-webkit-overflow-scrolling: touch;
+	}
+
+	.player-wrap {
+		flex-shrink: 0;
+		width: 100%;
 	}
 
 	.deck-title {
@@ -1604,10 +1629,6 @@
 			grid-column: 1 / -1;
 		}
 
-		.game-grid:not(.game-grid-compact) .player-wrap {
-			grid-column: 1 / -1;
-		}
-
 		.game-grid-compact .attempt-panel {
 			grid-column: 1 / span 6;
 			grid-row: 1;
@@ -1623,11 +1644,6 @@
 		.game-grid-compact .result-panel {
 			grid-column: 1 / span 6;
 			grid-row: 2;
-		}
-
-		.game-grid-compact .player-wrap {
-			grid-column: 1 / span 6;
-			grid-row: 3;
 		}
 
 		.game-grid-compact .attempt-history {

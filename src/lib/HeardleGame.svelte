@@ -47,6 +47,7 @@
 	const TOTAL_MS = segmentDurations.at(-1)!;
 	const TOTAL_SECONDS = TOTAL_MS / 1000;
 	const maxAttempts = SEGMENT_INCREMENTS.length;
+	const VINYL_SPIN_RATE = 0.10285;
 
 	type AttemptInfo = { status: 'skip' | 'wrong' | 'correct'; title?: string };
 	type SavedGame = {
@@ -113,7 +114,6 @@
 
 	let timeLeft = '';
 	let countdownInterval: ReturnType<typeof setInterval>;
-	let compactLayout = false;
 	let attemptHistoryEl: HTMLDivElement;
 	let attemptPanelEl: HTMLElement;
 	let resultPanelEl: HTMLElement;
@@ -121,8 +121,10 @@
 	let gameScrollEl: HTMLDivElement;
 	let gameBodyEl: HTMLDivElement;
 	let playerWrapEl: HTMLDivElement;
+	let vinylColEl: HTMLDivElement;
 	let layoutObserver: ResizeObserver | undefined;
-	let compactAttemptMaxHeight: number | null = null;
+	let middleScrollable = false;
+	let gameScrollFill = false;
 
 	const boundaries = segmentDurations.map((ms) => ms / 1000).slice(0, -1);
 	$: activeLimit = gameOver ? fullDuration || TOTAL_MS : segmentDurations[attemptCount] || TOTAL_MS;
@@ -166,47 +168,38 @@
 		}
 	}
 
-	$: if (hydrated && gameOver) {
-		void tick().then(updateCompactLayout);
+	$: if (hydrated) {
+		void updateGameLayout();
 	}
 
-	function updateCompactLayout() {
-		if (typeof window === 'undefined' || !gameOver || window.innerWidth < 1024) {
-			compactLayout = false;
-			compactAttemptMaxHeight = null;
+	function getFlexGap(el: HTMLElement): number {
+		const styles = getComputedStyle(el);
+		return Number.parseFloat(styles.rowGap) || Number.parseFloat(styles.gap) || 0;
+	}
+
+	function getMiddleScrollBudget(): number {
+		if (!gameBodyEl || !playerWrapEl) return 0;
+		const gap = getFlexGap(gameBodyEl) || 12;
+		return Math.max(0, gameBodyEl.clientHeight - playerWrapEl.offsetHeight - gap);
+	}
+
+	function updateMiddleScrollable() {
+		if (typeof window === 'undefined' || !gameScrollEl || !playerWrapEl || !gameGridEl || !gameBodyEl) {
+			middleScrollable = false;
 			return;
 		}
 
-		if (!gameBodyEl || !playerWrapEl || !gameGridEl) return;
+		middleScrollable = gameGridEl.offsetHeight > getMiddleScrollBudget() + 1;
+	}
 
-		const contentBudget = gameBodyEl.clientHeight - playerWrapEl.offsetHeight;
-		const resultHeight = resultPanelEl?.offsetHeight ?? 0;
-		const gridStyles = getComputedStyle(gameGridEl);
-		const rowGap = Number.parseFloat(gridStyles.rowGap) || 16;
-
-		if (!compactLayout) {
-			const shouldCompact = gameGridEl.offsetHeight > contentBudget + 1;
-			compactLayout = shouldCompact;
-			if (shouldCompact) {
-				void tick().then(updateCompactLayout);
-				return;
-			}
-			compactAttemptMaxHeight = null;
-			return;
-		}
-		{
-			const spaciousHeight = 440 + rowGap + resultHeight;
-			if (spaciousHeight <= contentBudget + 1) {
-				compactLayout = false;
-				compactAttemptMaxHeight = null;
-				return;
-			}
-		}
-
-		if (compactLayout && resultHeight > 0) {
-			compactAttemptMaxHeight = Math.max(140, contentBudget - resultHeight - rowGap);
-		} else {
-			compactAttemptMaxHeight = null;
+	async function updateGameLayout() {
+		await tick();
+		updateMiddleScrollable();
+		gameScrollFill = middleScrollable;
+		if (middleScrollable) {
+			await tick();
+			updateMiddleScrollable();
+			gameScrollFill = middleScrollable;
 		}
 	}
 
@@ -231,9 +224,9 @@
 		void loadGlobalGamesPlayed();
 
 		if (typeof ResizeObserver !== 'undefined') {
-			layoutObserver = new ResizeObserver(() => updateCompactLayout());
+			layoutObserver = new ResizeObserver(() => updateGameLayout());
 		}
-		const onResize = () => updateCompactLayout();
+		const onResize = () => updateGameLayout();
 		window.addEventListener('resize', onResize);
 
 		return () => {
@@ -245,7 +238,12 @@
 
 	$: if (resultPanelEl && layoutObserver) {
 		layoutObserver.observe(resultPanelEl);
-		updateCompactLayout();
+		updateGameLayout();
+	}
+
+	$: if (vinylColEl && layoutObserver) {
+		layoutObserver.observe(vinylColEl);
+		updateGameLayout();
 	}
 
 	$: if (gameBodyEl && gameGridEl && playerWrapEl && layoutObserver) {
@@ -253,30 +251,40 @@
 		layoutObserver.observe(gameGridEl);
 		layoutObserver.observe(playerWrapEl);
 		if (attemptHistoryEl) layoutObserver.observe(attemptHistoryEl);
-		updateCompactLayout();
+		updateGameLayout();
 	}
 
 	async function loadGlobalGamesPlayed() {
 		try {
-			const incrementedKey = `maisie-heardle:global-count-incremented:${todayKey}`;
-			const alreadyCounted = Boolean(localStorage.getItem(incrementedKey));
-			const url = alreadyCounted
-				? '/api/stats/games-played'
-				: '/api/stats/games-played?increment=1';
-
-			const res = await fetch(url);
+			const res = await fetch('/api/stats/games-played');
 			if (res.ok) {
 				const data = (await res.json()) as { count?: number };
 				globalGamesPlayed = data.count ?? 0;
-				if (!alreadyCounted) {
-					localStorage.setItem(incrementedKey, 'true');
-				}
 			} else {
 				globalGamesPlayed = -1;
 			}
 		} catch (err) {
-			console.error('Failed to update global games played counter:', err);
+			console.error('Failed to load global games played counter:', err);
 			globalGamesPlayed = -1;
+		}
+	}
+
+	async function recordGlobalGameFinish() {
+		const countedKey = `maisie-heardle:global-finish-counted:${todayKey}`;
+		if (localStorage.getItem(countedKey)) {
+			await loadGlobalGamesPlayed();
+			return;
+		}
+
+		try {
+			const res = await fetch('/api/stats/games-played?increment=1');
+			if (res.ok) {
+				const data = (await res.json()) as { count?: number };
+				globalGamesPlayed = data.count ?? 0;
+				localStorage.setItem(countedKey, 'true');
+			}
+		} catch (err) {
+			console.error('Failed to record global games played counter:', err);
 		}
 	}
 
@@ -386,7 +394,7 @@
 		lastFrameTime = timestamp;
 
 		if (isPlaying && vinylElement) {
-			vinylRotation = vinylRotation + 0.10285 * dt;
+			vinylRotation = vinylRotation + VINYL_SPIN_RATE * dt;
 			vinylElement.style.transform = `rotate(${vinylRotation}deg)`;
 			if (typeof requestAnimationFrame !== 'undefined') {
 				animationFrameId = requestAnimationFrame(spinVinyl);
@@ -529,11 +537,12 @@
 	function playSegment(seekToStart = true) {
 		if (!widgetReady || loading || widgetError) return;
 		stopAllTimers();
-		if (seekToStart && !gameOver) {
+		if (seekToStart) {
 			currentPosition = 0;
 			widget.seekTo(0);
 		}
-		setTimeout(() => widget.play(), 100);
+		widget.play();
+		startPolling();
 	}
 
 	function togglePlayPause() {
@@ -547,12 +556,41 @@
 		}
 	}
 
+	function rotationForPosition(positionMs: number): number {
+		return positionMs * VINYL_SPIN_RATE;
+	}
+
+	function seekVinylRotation(targetPosition: number, animate = true) {
+		if (!vinylElement) return;
+
+		if (typeof cancelAnimationFrame !== 'undefined') {
+			cancelAnimationFrame(animationFrameId);
+		}
+
+		const targetRotation = rotationForPosition(targetPosition);
+
+		if (!animate || isPlaying) {
+			vinylRotation = targetRotation;
+			vinylElement.style.transition = 'none';
+			vinylElement.style.transform = `rotate(${vinylRotation}deg)`;
+			if (isPlaying && typeof requestAnimationFrame !== 'undefined') {
+				lastFrameTime = 0;
+				animationFrameId = requestAnimationFrame(spinVinyl);
+			}
+			return;
+		}
+
+		const delta = Math.abs(targetRotation - vinylRotation);
+		const duration = Math.max(250, Math.min(2200, (delta / 360) * 450));
+		vinylElement.style.transition = `transform ${duration}ms cubic-bezier(0.15, 0.85, 0.35, 1)`;
+		vinylElement.style.transform = `rotate(${targetRotation}deg)`;
+		vinylRotation = targetRotation;
+	}
+
 	function rewindSong() {
 		if (!widgetReady || !gameOver) return;
 		const wasPlaying = isPlaying;
-		stopAllTimers();
-		currentPosition = 0;
-		widget.seekTo(0);
+		seekToPosition(0);
 		if (wasPlaying) setTimeout(() => widget.play(), 150);
 	}
 
@@ -597,10 +635,15 @@
 	}
 
 	function seekToPosition(position: number) {
-		const nextPosition = Math.min(Math.max(position, 0), fullDuration);
+		const duration = fullDuration || TOTAL_MS;
+		const nextPosition = Math.min(Math.max(position, 0), duration);
 		const wasPlaying = isPlaying;
 		currentPosition = nextPosition;
 		widget.seekTo(nextPosition);
+
+		if (gameOver) {
+			seekVinylRotation(nextPosition, !wasPlaying);
+		}
 
 		if (wasPlaying) {
 			setTimeout(() => widget.play(), 75);
@@ -662,9 +705,19 @@
 		stopAllTimers();
 		widget?.pause();
 
+		if (didWin) {
+			currentPosition = 0;
+			widget?.seekTo(0);
+			seekVinylRotation(0, false);
+		} else {
+			currentPosition = fullDuration || segmentDurations[attemptCount - 1] || TOTAL_MS;
+			seekVinylRotation(currentPosition, false);
+		}
+
 		if (!statsRecorded) {
 			stats = recordStats(didWin, attemptCount);
 			statsRecorded = true;
+			void recordGlobalGameFinish();
 		}
 	}
 
@@ -962,22 +1015,30 @@
 			</div>
 		</header>
 
-		<div bind:this={gameBodyEl} class="game-body mt-3 flex min-h-0 flex-1 flex-col lg:mt-4">
+		<div bind:this={gameBodyEl} class="game-body relative mt-3 flex min-h-0 flex-1 flex-col gap-3 lg:mt-4">
+			<iframe
+				bind:this={iframeElement}
+				src={`https://w.soundcloud.com/player/?url=${encodeURIComponent(currentTrack.url)}&show_artwork=false&visual=false`}
+				class="soundcloud-player"
+				allow="autoplay"
+				title="SoundCloud preview player"
+			></iframe>
 			<div
 				bind:this={gameScrollEl}
-				class="game-scroll min-h-0 flex-1 overflow-y-auto pr-1"
+				class="game-scroll min-h-0 pr-1"
+				class:game-scroll-fill={gameScrollFill}
 				class:game-scroll-ended={gameOver}
+				class:game-scroll-scrollable={middleScrollable}
 			>
 				<div
 					bind:this={gameGridEl}
-					class="game-grid flex min-h-0 flex-col gap-3 sm:gap-4 lg:grid lg:grid-cols-12 lg:items-start lg:gap-x-6 lg:gap-y-4"
-					class:game-grid-compact={gameOver && compactLayout}
+					class="game-grid flex min-h-0 flex-col gap-3 sm:gap-4 lg:grid lg:grid-cols-12 lg:items-stretch lg:gap-x-6 lg:gap-y-4"
 				>
+			<div class="left-col order-1 flex min-h-0 w-full flex-col lg:col-span-6">
 			<section
 				bind:this={attemptPanelEl}
-				class="attempt-panel order-1 min-h-0 lg:col-span-6"
+				class="attempt-panel min-h-0 w-full"
 				class:attempt-panel-game-over={gameOver}
-				style={compactAttemptMaxHeight ? `max-height: ${compactAttemptMaxHeight}px` : undefined}
 			>
 				<p class="status-strip">
 					<span class="status-chip">
@@ -1026,12 +1087,16 @@
 						{/each}
 				</div>
 			</section>
+			</div>
 
 			<!-- Right Column: Spinning Vinyl Player (Desktop only) -->
-			<div class="vinyl-col order-2 hidden min-h-0 flex-col items-end justify-start lg:col-span-6 lg:flex">
-				<div class="vinyl-turntable-container flex w-full flex-col items-end justify-start">
+			<div
+				bind:this={vinylColEl}
+				class="vinyl-col order-2 hidden min-h-0 w-full flex-col lg:col-span-6 lg:flex"
+			>
+				<div class="vinyl-turntable-container flex h-full w-full flex-col">
 					<div
-						class="turntable-base relative flex h-[440px] w-[480px] items-center justify-center rounded-2xl shadow-xl transition-all duration-300 select-none"
+						class="turntable-base relative flex h-[440px] w-full items-center justify-center rounded-2xl shadow-xl transition-all duration-300 select-none"
 						style="
 							background: {darkMode ? '#1e1e1e' : '#f7f8f7'};
 							border: 1px solid var(--deck-border);
@@ -1253,11 +1318,14 @@
 					</div>
 				</div>
 			</div>
+			</div>
+		</div>
 
-			{#if gameOver}
+		{#if gameOver}
+			<div bind:this={playerWrapEl} class="end-game-dock flex-shrink-0">
 				<section
 					bind:this={resultPanelEl}
-					class="result-panel order-3 rounded p-3 sm:p-4"
+					class="result-panel dock-result rounded p-3 sm:p-4"
 					style="--result-color: {won ? COLORS.success : COLORS.danger}"
 				>
 					<div class="flex gap-3 sm:gap-4">
@@ -1265,7 +1333,7 @@
 							<img
 								src={artworkUrl.replace('-large', '-t500x500')}
 								alt="{currentTrack.title} cover"
-								class="h-16 w-16 flex-shrink-0 rounded object-cover shadow-md sm:h-20 sm:w-20"
+								class="dock-result-art h-14 w-14 flex-shrink-0 rounded object-cover shadow-md sm:h-16 sm:w-16 lg:h-20 lg:w-20"
 							/>
 						{/if}
 						<div class="min-w-0 flex-1">
@@ -1276,15 +1344,15 @@
 								{won ? 'Solved' : 'Revealed'}
 								{resultLabel}
 							</p>
-							<h2 class="truncate text-lg font-extrabold sm:text-2xl">{currentTrack.title}</h2>
-							<p class="text-xs sm:text-sm" style="color: {darkMode ? '#cfc7c1' : COLORS.muted}">
+							<h2 class="truncate text-base font-extrabold sm:text-lg lg:text-xl">{currentTrack.title}</h2>
+							<p class="line-clamp-2 text-xs sm:text-sm" style="color: {darkMode ? '#cfc7c1' : COLORS.muted}">
 								{message}
 							</p>
 							<a
 								href={`https://song.link/${currentTrack.url}`}
 								target="_blank"
 								rel="noopener noreferrer"
-								class="mt-1 inline-flex text-xs font-semibold underline sm:mt-2 sm:text-sm"
+								class="mt-1 inline-flex text-xs font-semibold underline sm:text-sm"
 								style="color: {COLORS.primary}"
 							>
 								Open song links
@@ -1292,7 +1360,7 @@
 						</div>
 					</div>
 
-					<div class="mt-3 flex flex-wrap items-center gap-2 sm:mt-4 sm:gap-3">
+					<div class="mt-2 flex flex-wrap items-center gap-2 sm:mt-3">
 						<button
 							type="button"
 							class="share-button inline-flex items-center gap-2 rounded px-3 py-1.5 text-xs font-bold text-white transition hover:brightness-95 sm:px-4 sm:py-2 sm:text-sm"
@@ -1302,25 +1370,97 @@
 							Share result
 						</button>
 						{#if shareMessage}
-							<span class="text-xs font-medium sm:text-sm" aria-live="polite">{shareMessage}</span
-							>
+							<span class="text-xs font-medium sm:text-sm" aria-live="polite">{shareMessage}</span>
 						{/if}
 					</div>
 				</section>
-			{/if}
+
+				<section class="control-deck dock-controls">
+					{#if widgetError}
+						<div
+							class="mb-3 rounded border p-3 text-xs sm:text-sm"
+							role="alert"
+							style="border-color: {COLORS.danger}; color: {COLORS.danger}; background: {darkMode
+								? '#2b1717'
+								: '#fff1ef'}"
+						>
+							{widgetError}
+						</div>
+					{/if}
+
+					<div
+						class="progress-rail relative mb-1.5 h-5 w-full overflow-hidden rounded sm:mb-2 sm:h-7"
+						aria-label="Audio progress"
+					>
+						<div
+							class="absolute top-0 left-0 h-full transition-[width] duration-100"
+							style="width: {fillPercent}%; background: {COLORS.accent};"
+						></div>
+						<button
+							type="button"
+							class="absolute inset-0 z-20 h-full w-full cursor-pointer bg-transparent focus:ring-2 focus:outline-none"
+							style="--tw-ring-color: {COLORS.primary}"
+							aria-label="Seek finished song"
+							aria-valuemin="0"
+							aria-valuemax={Math.round((fullDuration || TOTAL_MS) / 1000)}
+							aria-valuenow={Math.round(currentPosition / 1000)}
+							role="slider"
+							title="Seek song"
+							on:click={seekFinishedSong}
+							on:keydown={seekFinishedSong}
+						></button>
+					</div>
+
+					<div
+						class="flex justify-between text-xs"
+						style="color: {darkMode ? '#cfc7c1' : COLORS.muted}"
+					>
+						<span>{formatTime(currentPosition)}</span>
+						<span>{formatTime(progressDuration)}</span>
+					</div>
+
+					<div class="mt-2 flex items-center justify-center gap-4 lg:hidden">
+						<button
+							type="button"
+							on:click={rewindSong}
+							class="flex h-9 w-9 items-center justify-center rounded-full border-2 transition hover:scale-105 disabled:opacity-50 sm:h-12 sm:w-12"
+							style="border-color: {loading ? '#888888' : COLORS.primary}; color: {loading
+								? '#888888'
+								: COLORS.primary}"
+							disabled={loading}
+							aria-label="Restart song from beginning"
+							title="Restart song"
+						>
+							<Icon src={ArrowPath} class="h-4 w-4 sm:h-6 sm:w-6" />
+						</button>
+						<button
+							type="button"
+							on:click={togglePlayPause}
+							class="flex h-12 w-12 items-center justify-center rounded-full border-2 transition hover:scale-105 disabled:opacity-50 sm:h-16 sm:w-16"
+							style="border-color: {loading || widgetError
+								? '#888888'
+								: COLORS.accent}; color: {loading || widgetError ? '#888888' : COLORS.accent}"
+							disabled={loading || Boolean(widgetError)}
+							aria-label={isPlaying ? 'Pause audio' : 'Play audio'}
+							title={isPlaying ? 'Pause' : 'Play'}
+						>
+							<Icon src={isPlaying ? Pause : Play} class="h-6 w-6 sm:h-8 sm:w-8" />
+						</button>
+					</div>
+
+					{#if loading && !widgetError}
+						<p
+							class="mt-2 animate-pulse text-center text-xs sm:text-sm"
+							style="color: {darkMode ? '#cfc7c1' : COLORS.muted}"
+							aria-live="polite"
+						>
+							Loading today’s song...
+						</p>
+					{/if}
+				</section>
 			</div>
-		</div>
-
-		<div bind:this={playerWrapEl} class="player-wrap flex-shrink-0 pt-3 sm:pt-4">
-				<!-- Hidden SoundCloud player iframe -->
-				<iframe
-					bind:this={iframeElement}
-					src={`https://w.soundcloud.com/player/?url=${encodeURIComponent(currentTrack.url)}&show_artwork=false&visual=false`}
-					style="position:absolute; width:0; height:0; border:0; overflow:hidden; visibility:hidden;"
-					allow="autoplay"
-					title="SoundCloud preview player"
-				></iframe>
-
+		{:else}
+		<div bind:this={playerWrapEl} class="player-wrap flex-shrink-0">
 				<!-- Control Deck (Audio player controls & input) -->
 				<section class="control-deck">
 					{#if widgetError}
@@ -1521,6 +1661,7 @@
 					{/if}
 				</section>
 		</div>
+		{/if}
 		</div>
 	</div>
 </main>
@@ -1580,17 +1721,49 @@
 		min-height: 0;
 	}
 
+	.soundcloud-player {
+		position: absolute;
+		width: 0;
+		height: 0;
+		border: 0;
+		overflow: hidden;
+		visibility: hidden;
+	}
+
 	.game-scroll {
-		flex: 1 1 auto;
-		min-height: 0;
-		overflow-y: auto;
 		overscroll-behavior: contain;
 		-webkit-overflow-scrolling: touch;
 	}
 
+	.game-scroll.game-scroll-fill {
+		flex: 1 1 auto;
+		min-height: 0;
+	}
+
+	.game-scroll.game-scroll-scrollable {
+		overflow-y: auto;
+	}
+
 	@media (min-width: 1024px) {
-		.game-scroll.game-scroll-ended {
+		.game-scroll.game-scroll-ended:not(.game-scroll-scrollable) {
 			overflow: hidden;
+		}
+
+		.game-scroll.game-scroll-fill.game-scroll-ended:not(.game-scroll-scrollable) {
+			overflow: hidden;
+		}
+	}
+
+	.game-scroll:not(.game-scroll-fill) {
+		flex: 0 1 auto;
+		overflow: visible;
+	}
+
+	@media (max-width: 1023px) {
+		.game-scroll {
+			flex: 1 1 auto;
+			min-height: 0;
+			overflow-y: auto;
 		}
 	}
 
@@ -1598,9 +1771,56 @@
 		align-content: start;
 	}
 
+	.left-col,
+	.vinyl-col {
+		min-width: 0;
+	}
+
+	@media (min-width: 1024px) {
+		.left-col,
+		.vinyl-col,
+		.attempt-panel,
+		.turntable-base {
+			width: 100%;
+		}
+
+		.vinyl-turntable-container {
+			height: 440px;
+		}
+	}
+
 	.player-wrap {
 		flex-shrink: 0;
 		width: 100%;
+	}
+
+	.end-game-dock {
+		position: relative;
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		gap: 12px;
+		width: 100%;
+		align-items: stretch;
+	}
+
+	@media (min-width: 1024px) {
+		.end-game-dock {
+			grid-template-columns: repeat(12, minmax(0, 1fr));
+			column-gap: 24px;
+		}
+
+		.dock-result {
+			grid-column: 1 / span 6;
+			min-height: 100%;
+		}
+
+		.dock-controls {
+			grid-column: 7 / span 6;
+			display: flex;
+			flex-direction: column;
+			justify-content: center;
+			min-height: 100%;
+		}
 	}
 
 	.deck-title {
@@ -1656,67 +1876,19 @@
 			display: flex;
 			flex-direction: column;
 		}
+
 		.attempt-history {
+			display: flex;
+			flex-direction: column;
 			flex: 1 1 auto;
 			min-height: 0;
 			overflow-y: auto;
-			display: flex;
-			flex-direction: column;
 		}
+
 		.attempt-row {
 			flex-grow: 1;
 			font-size: 1.1rem !important;
-		}
-
-		.game-grid:not(.game-grid-compact) .attempt-panel-game-over .attempt-row {
-			flex-grow: 0;
 			min-height: 2.25rem;
-		}
-
-		.game-grid:not(.game-grid-compact) .result-panel {
-			grid-column: 1 / -1;
-		}
-
-		.game-grid-compact .attempt-panel {
-			grid-column: 1 / span 6;
-			grid-row: 1;
-			height: auto;
-			max-height: none;
-		}
-
-		.game-grid-compact .vinyl-col {
-			grid-column: 7 / span 6;
-			grid-row: 1 / span 2;
-		}
-
-		.game-grid-compact .result-panel {
-			grid-column: 1 / span 6;
-			grid-row: 2;
-		}
-
-		.game-grid-compact .attempt-history {
-			flex-grow: 0;
-			overflow-y: auto;
-		}
-
-		.game-grid-compact .attempt-row {
-			flex-grow: 0;
-			min-height: 2.25rem;
-		}
-	}
-
-	@media (min-width: 1024px) and (max-height: 820px) {
-		.game-grid-compact .attempt-row {
-			min-height: 2rem;
-			font-size: 0.95rem !important;
-		}
-
-		.game-grid-compact .result-panel {
-			padding: 10px 12px;
-		}
-
-		.game-grid-compact .result-panel h2 {
-			font-size: 1.1rem;
 		}
 	}
 

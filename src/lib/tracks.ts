@@ -14,6 +14,21 @@ export type Track = TrackData & {
 };
 
 export const TRACKS_DATA: TrackData[] = [
+	{ title: 'Mary Janes', slug: 'mary-janes' },
+	{ title: 'Audrey Hepburn', slug: 'audrey-hepburn' },
+	{ title: 'Say My Name In Your Sleep', slug: 'say-my-name-in-your-sleep' },
+	{ title: 'Old Fashioned', slug: 'old-fashioned' },
+	{ title: 'Houses', slug: 'houses' },
+	{ title: 'Kingmaker (with Julia Michaels)', slug: 'kingmaker-with-julia-michaels' },
+	{ title: 'Vampire Time', slug: 'vampire-time' },
+	{ title: 'My Regards', slug: 'my-regards' },
+	{ title: 'You You You', slug: 'you-you-you' },
+	{ title: 'If You Let Me (with Marcus Mumford)', slug: 'if-you-let-me-with-marcus' },
+	{ title: 'Flat Earther', slug: 'flat-earther' },
+	{ title: 'Questions', slug: 'questions' },
+	{ title: 'Girl’s Just Flying', slug: 'girls-just-flying' },
+	{ title: 'You Then Me Now', slug: 'you-then-me-now' },
+	{ title: 'Nothing Like Being In Love', slug: 'nothing-like-being-in-love' },
 	{ title: 'Holy Revival', slug: 'holy-revival' },
 	{ title: 'The Song', slug: 'the-song' },
 	{ title: 'Guy On A Horse', slug: 'guy-on-a-horse' },

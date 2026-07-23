@@ -90,11 +90,6 @@
 	let seekAnimationFrameId: number | undefined;
 	let vinylSeekAnimation: Animation | undefined;
 	let isVinylSeekAnimating = false;
-	let isSeekDragging = false;
-	let seekDragMoved = false;
-	let seekStartPosition = 0;
-	let seekLastPosition = 0;
-	let seekDragStartX = 0;
 	let waveformHeights = [4, 4, 4, 4, 4, 4, 4];
 	let waveformInterval: ReturnType<typeof setInterval>;
 
@@ -166,7 +161,7 @@
 		});
 	}
 
-	$: if (typeof window !== 'undefined' && !isVinylSeekAnimating && !isSeekDragging) {
+	$: if (typeof window !== 'undefined' && !isVinylSeekAnimating) {
 		handlePlayStateChange(isPlaying);
 	}
 
@@ -355,11 +350,6 @@
 		clearInterval(countdownInterval);
 		clearTimeout(widgetReadyTimeout);
 		cancelVinylSeekAnimation();
-		window.removeEventListener('pointermove', handleSeekPointerMoveWindow);
-		window.removeEventListener('pointerup', endSeekDrag);
-		window.removeEventListener('pointercancel', endSeekDrag);
-		window.removeEventListener('mousemove', handleSeekMouseMoveWindow);
-		window.removeEventListener('mouseup', endSeekDrag);
 		if (widget?.unbind && window.SC?.Widget?.Events) {
 			Object.values(window.SC.Widget.Events).forEach((eventName) => widget.unbind(eventName));
 		}
@@ -704,90 +694,18 @@
 		}
 	}
 
-	function positionFromSeekEvent(event: MouseEvent | PointerEvent, element: HTMLElement) {
-		const bounds = element.getBoundingClientRect();
-		const ratio = Math.min(Math.max((event.clientX - bounds.left) / bounds.width, 0), 1);
-		return ratio * (fullDuration || TOTAL_MS);
-	}
-
-	let seekRailEl: HTMLElement | undefined;
-
-	function updateSeekFromPointer(event: PointerEvent | MouseEvent) {
-		if (!seekRailEl || !fullDuration) return;
-		const nextPosition = positionFromSeekEvent(event, seekRailEl);
-		const deltaPosition = nextPosition - seekLastPosition;
+	function handleSeekInput(event: Event) {
+		if (!widgetReady || !gameOver || !fullDuration) return;
+		const nextPosition = Number((event.currentTarget as HTMLInputElement).value) * 1000;
+		const previousPosition = currentPosition;
 		currentPosition = nextPosition;
-		spinVinylDuringScrub(deltaPosition, event.movementX);
-		seekLastPosition = nextPosition;
+		spinVinylDuringScrub(nextPosition - previousPosition);
 	}
 
-	function endSeekDrag(event: PointerEvent | MouseEvent) {
-		if (!isSeekDragging || !fullDuration || !seekRailEl) return;
-
-		window.removeEventListener('pointermove', handleSeekPointerMoveWindow);
-		window.removeEventListener('pointerup', endSeekDrag);
-		window.removeEventListener('pointercancel', endSeekDrag);
-		window.removeEventListener('mousemove', handleSeekMouseMoveWindow);
-		window.removeEventListener('mouseup', endSeekDrag);
-
-		const nextPosition = positionFromSeekEvent(event, seekRailEl);
-
-		if (seekDragMoved) {
-			seekToPosition(nextPosition, { animateVinyl: true });
-		} else {
-			currentPosition = seekStartPosition;
-			seekToPosition(nextPosition, { animateVinyl: true });
-		}
-
-		isSeekDragging = false;
-		seekRailEl = undefined;
-	}
-
-	function handleSeekPointerMoveWindow(event: PointerEvent) {
-		if (!isSeekDragging) return;
-		if (Math.abs(event.clientX - seekDragStartX) > 2) {
-			seekDragMoved = true;
-		}
-		updateSeekFromPointer(event);
-	}
-
-	function handleSeekMouseMoveWindow(event: MouseEvent) {
-		if (!isSeekDragging) return;
-		if (Math.abs(event.clientX - seekDragStartX) > 2) {
-			seekDragMoved = true;
-		}
-		updateSeekFromPointer(event);
-	}
-
-	function handleSeekPointerDown(event: PointerEvent) {
-		if (isSeekDragging || !widgetReady || !gameOver || !fullDuration) return;
-		event.preventDefault();
-
-		seekRailEl = event.currentTarget as HTMLElement;
-		isSeekDragging = true;
-		seekDragMoved = false;
-		seekDragStartX = event.clientX;
-		seekStartPosition = currentPosition;
-		seekLastPosition = currentPosition;
-
-		window.addEventListener('pointermove', handleSeekPointerMoveWindow);
-		window.addEventListener('pointerup', endSeekDrag);
-		window.addEventListener('pointercancel', endSeekDrag);
-	}
-
-	function handleSeekMouseDown(event: MouseEvent) {
-		if (isSeekDragging || !widgetReady || !gameOver || !fullDuration) return;
-		event.preventDefault();
-
-		seekRailEl = event.currentTarget as HTMLElement;
-		isSeekDragging = true;
-		seekDragMoved = false;
-		seekDragStartX = event.clientX;
-		seekStartPosition = currentPosition;
-		seekLastPosition = currentPosition;
-
-		window.addEventListener('mousemove', handleSeekMouseMoveWindow);
-		window.addEventListener('mouseup', endSeekDrag);
+	function handleSeekChange(event: Event) {
+		if (!widgetReady || !gameOver || !fullDuration) return;
+		const nextPosition = Number((event.currentTarget as HTMLInputElement).value) * 1000;
+		seekToPosition(nextPosition, { animateVinyl: true });
 	}
 
 	function rewindSong() {
@@ -795,46 +713,6 @@
 		const wasPlaying = isPlaying;
 		seekToPosition(0);
 		if (wasPlaying) setTimeout(() => widget.play(), 150);
-	}
-
-	function seekFinishedSong(event: MouseEvent | KeyboardEvent) {
-		if (!widgetReady || !gameOver || !fullDuration) return;
-
-		let ratio: number;
-
-		if (event instanceof KeyboardEvent) {
-			const step = event.shiftKey ? 10_000 : 5_000;
-			if (event.key === 'ArrowLeft') {
-				event.preventDefault();
-				seekToPosition(currentPosition - step);
-				return;
-			}
-			if (event.key === 'ArrowRight') {
-				event.preventDefault();
-				seekToPosition(currentPosition + step);
-				return;
-			}
-			if (event.key === 'Home') {
-				event.preventDefault();
-				seekToPosition(0);
-				return;
-			}
-			if (event.key === 'End') {
-				event.preventDefault();
-				seekToPosition(fullDuration);
-				return;
-			}
-			return;
-		}
-
-		const bounds =
-			event.currentTarget instanceof HTMLElement
-				? event.currentTarget.getBoundingClientRect()
-				: null;
-		if (!bounds) return;
-
-		ratio = Math.min(Math.max((event.clientX - bounds.left) / bounds.width, 0), 1);
-		seekToPosition(ratio * fullDuration);
 	}
 
 	function seekToPosition(
@@ -1772,20 +1650,20 @@
 								class="absolute top-0 left-0 h-full transition-[width] duration-100"
 								style="width: {fillPercent}%; background: {COLORS.accent};"
 							></div>
-							<button
-								type="button"
+							<input
+								type="range"
+								min="0"
+								max={(fullDuration || TOTAL_MS) / 1000}
+								step="0.1"
+								value={currentPosition / 1000}
 								class="seek-slider absolute inset-0 z-20 h-full w-full cursor-pointer bg-transparent focus:ring-2 focus:outline-none"
 								style="--tw-ring-color: {COLORS.primary}; touch-action: none;"
 								aria-label="Seek finished song"
-								aria-valuemin="0"
-								aria-valuemax={Math.round((fullDuration || TOTAL_MS) / 1000)}
-								aria-valuenow={Math.round(currentPosition / 1000)}
-								role="slider"
+								aria-valuetext={formatTime(currentPosition)}
 								title="Seek song"
-								on:pointerdown={handleSeekPointerDown}
-								on:mousedown={handleSeekMouseDown}
-								on:keydown={seekFinishedSong}
-							></button>
+								on:input={handleSeekInput}
+								on:change={handleSeekChange}
+							/>
 						</div>
 
 						<div
@@ -1886,20 +1764,20 @@
 								{/each}
 							{/if}
 							{#if gameOver}
-								<button
-									type="button"
+								<input
+									type="range"
+									min="0"
+									max={(fullDuration || TOTAL_MS) / 1000}
+									step="0.1"
+									value={currentPosition / 1000}
 									class="seek-slider absolute inset-0 z-20 h-full w-full cursor-pointer bg-transparent focus:ring-2 focus:outline-none"
 									style="--tw-ring-color: {COLORS.primary}; touch-action: none;"
 									aria-label="Seek finished song"
-									aria-valuemin="0"
-									aria-valuemax={Math.round((fullDuration || TOTAL_MS) / 1000)}
-									aria-valuenow={Math.round(currentPosition / 1000)}
-									role="slider"
+									aria-valuetext={formatTime(currentPosition)}
 									title="Seek song"
-									on:pointerdown={handleSeekPointerDown}
-									on:mousedown={handleSeekMouseDown}
-									on:keydown={seekFinishedSong}
-								></button>
+									on:input={handleSeekInput}
+									on:change={handleSeekChange}
+								/>
 							{/if}
 						</div>
 
@@ -2350,6 +2228,38 @@
 		border: 1px solid var(--deck-border);
 		background: linear-gradient(180deg, rgba(0, 0, 0, 0.06), transparent 45%), var(--rail-bg);
 		box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.14);
+	}
+
+	.seek-slider {
+		-webkit-appearance: none;
+		appearance: none;
+		margin: 0;
+	}
+
+	.seek-slider::-webkit-slider-runnable-track {
+		height: 100%;
+		background: transparent;
+	}
+
+	.seek-slider::-webkit-slider-thumb {
+		width: 1px;
+		height: 100%;
+		border: 0;
+		background: transparent;
+		-webkit-appearance: none;
+		appearance: none;
+	}
+
+	.seek-slider::-moz-range-track {
+		height: 100%;
+		background: transparent;
+	}
+
+	.seek-slider::-moz-range-thumb {
+		width: 1px;
+		height: 100%;
+		border: 0;
+		background: transparent;
 	}
 
 	.share-button {

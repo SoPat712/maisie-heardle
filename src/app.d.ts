@@ -19,6 +19,7 @@ declare global {
 		play: () => void;
 		pause: () => void;
 		seekTo: (milliseconds: number) => void;
+		setVolume: (volume: number) => void;
 	};
 
 	type SoundCloudApi = {

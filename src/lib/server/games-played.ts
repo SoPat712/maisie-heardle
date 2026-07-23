@@ -24,7 +24,7 @@ async function writeLocalCount(count: number): Promise<number> {
 
 async function readNetlifyCount(): Promise<number> {
 	const store = getStore({ name: STORE_NAME, consistency: 'strong' });
-	const value = await store.get(COUNTER_KEY);
+	const value = await store.get(COUNTER_KEY, { type: 'text' });
 	if (!value) return 0;
 	const count = Number.parseInt(value, 10);
 	return Number.isFinite(count) ? count : 0;

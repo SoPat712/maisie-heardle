@@ -3,6 +3,9 @@
 	"private": true,
 	"version": "0.0.1",
 	"type": "module",
+	"engines": {
+		"node": ">=20.19"
+	},
 	"scripts": {
 		"dev": "vite dev",
 		"build": "vite build",
@@ -10,6 +13,7 @@
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+		"test": "vitest run",
 		"format": "prettier --write .",
 		"lint": "prettier --check . && eslint ."
 	},
@@ -20,6 +24,7 @@
 		"@sveltejs/kit": "^2.36.3",
 		"@sveltejs/vite-plugin-svelte": "^5.0.0",
 		"@tailwindcss/vite": "^4.0.0",
+		"@types/node": "^26.1.1",
 		"@types/seedrandom": "^3.0.8",
 		"eslint": "^9.18.0",
 		"eslint-config-prettier": "^10.0.1",
@@ -34,7 +39,8 @@
 		"tailwindcss": "^4.0.0",
 		"typescript": "^5.0.0",
 		"typescript-eslint": "^8.20.0",
-		"vite": "^6.2.5"
+		"vite": "^6.2.5",
+		"vitest": "^4.1.10"
 	},
 	"dependencies": {
 		"@netlify/blobs": "^10.7.9",

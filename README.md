@@ -30,7 +30,7 @@ Made to be modifiable, so you can play this game for any artists you like!
 
 See it in action:
 
-> https://maisie-peters-heardle.joshpatra.me'
+> https://maisie-peters-heardle.joshpatra.me
 
 ![image](https://github.com/user-attachments/assets/ec9bf8aa-ee41-42a7-9202-4e5e8719ffbc)
 
@@ -43,7 +43,8 @@ See it in action:
 - ❌ **Skips & Wrong Guesses**: Skip to unlock the next snippet; wrong guesses also unlock more audio.
 - ⏳ **Countdown**: Live countdown timer until the next daily track.
 - 🌙 **Dark Mode**: Auto‑detects system preference and can be toggled manually.
-- 💾 **No Data Collection**: No analytics or personal data stored.
+- 💾 **Privacy First**: No analytics or personal data are stored. The app maintains only an
+  anonymous, approximate aggregate of completed games.
 
 ---
 
@@ -53,7 +54,6 @@ See it in action:
 - **[Tailwind CSS](https://tailwindcss.com/)**
 - **[SoundCloud Widget API](https://developers.soundcloud.com/docs/api/html5-widget)**
 - **[Svelte Hero Icons](https://www.npmjs.com/package/svelte-hero-icons)**
-- **[Moment.js](https://momentjs.com/)**
 
 ---
 
@@ -61,8 +61,8 @@ See it in action:
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) v16+
-- [npm](https://www.npmjs.com/) v8+
+- [Node.js](https://nodejs.org/) v20.19+
+- [npm](https://www.npmjs.com/) v10+
 
 ### Installation
 
@@ -97,13 +97,15 @@ npm run build && npm run preview
 ## Configuration
 
 - **Artist & User**  
-  In `src/lib/HeardleGame.svelte`:
+  In `src/lib/tracks.ts`:
   ```ts
   const ARTIST_NAME = 'Maisie Peters';
   const SC_USER = 'maisie-peters';
   ```
 - **Track List**  
-  Edit `const TRACKS_DATA: TrackData[] = [...]` to add, remove, or comment out tracks.
+  Edit `TRACKS_DATA` in `src/lib/tracks.ts` to add or remove tracks. Run the test suite after
+  changing the catalog; the published-date assertions are intentional safeguards against
+  accidentally changing a live answer.
 
   https://github.com/SoPat712/soundcloud-track-importer
 
@@ -125,7 +127,6 @@ npm run build && npm run preview
 │   │   ├── +layout.svelte       # App layout & global head
 │   │   └── +page.svelte         # Root page slot
 │   └── app.css                  # Tailwind imports & custom styles
-├── netlify.toml                 # (Optional) Netlify configuration
 ├── package.json
 └── README.md
 ```
@@ -139,6 +140,15 @@ npm run build && npm run preview
 3. Commit changes: `git commit -m "Add awesome feature"`
 4. Push: `git push origin feature/YourFeature`
 5. Open a Pull Request
+
+Before opening a pull request, run:
+
+```bash
+npm run check
+npm run lint
+npm test
+npm run build
+```
 
 ---
 

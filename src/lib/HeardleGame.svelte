@@ -20,6 +20,7 @@
 		tracks,
 		type Track
 	} from '$lib/tracks';
+	import { calculateNextStats, createEmptyStats, type Stats } from '$lib/game-state';
 
 	const COLORS = {
 		background: '#ffffff',
@@ -60,27 +61,13 @@
 		won: boolean;
 		statsRecorded: boolean;
 	};
-	type Stats = {
-		played: number;
-		wins: number;
-		streak: number;
-		maxStreak: number;
-		distribution: number[];
-	};
-
 	let attemptInfos: AttemptInfo[] = [];
 	let attemptCount = 0;
 	let gameOver = false;
 	let message = '';
 	let won = false;
 	let statsRecorded = false;
-	let stats: Stats = {
-		played: 0,
-		wins: 0,
-		streak: 0,
-		maxStreak: 0,
-		distribution: Array(maxAttempts).fill(0)
-	};
+	let stats: Stats = createEmptyStats(maxAttempts);
 
 	let iframeElement: HTMLIFrameElement;
 	let widget: SoundCloudWidget;
@@ -88,6 +75,7 @@
 	let volume = 80;
 	let loading = true;
 	let widgetError = '';
+	let widgetReadyTimeout: ReturnType<typeof setTimeout>;
 	let artworkUrl = '';
 	let isPlaying = false;
 	let currentPosition = 0;
@@ -119,6 +107,8 @@
 	let suggestions: Track[] = [];
 	let selectedTrack: Track | null = null;
 	let inputEl: HTMLInputElement;
+	let dialogEl: HTMLDivElement;
+	let previouslyFocusedElement: HTMLElement | null = null;
 	let hydrated = false;
 	let shareMessage = '';
 	let suggestionArtwork: Record<string, string> = {};
@@ -149,7 +139,10 @@
 		{ length: Math.max(maxAttempts - attemptInfos.length, 0) },
 		(_, index) => attemptInfos.length + index + 1
 	);
-	$: canSubmit = Boolean(userInput.trim()) && !gameOver && !loading && !widgetError;
+	$: exactMatch = tracks.find(
+		(track) => normalizeTrackTitle(track.title) === normalizeTrackTitle(userInput)
+	);
+	$: canSubmit = Boolean(selectedTrack || exactMatch) && !gameOver && !loading && !widgetError;
 	$: resultLabel = won ? `${attemptCount}/${maxAttempts}` : `X/${maxAttempts}`;
 	$: suggestions =
 		userInput && !selectedTrack
@@ -228,7 +221,10 @@
 		loadSavedGame();
 		const savedVol = localStorage.getItem('heardle-volume');
 		if (savedVol !== null) {
-			volume = parseInt(savedVol);
+			const parsedVolume = Number.parseInt(savedVol, 10);
+			if (Number.isFinite(parsedVolume)) {
+				volume = Math.min(Math.max(parsedVolume, 0), 100);
+			}
 		}
 		hydrated = true;
 
@@ -246,12 +242,17 @@
 			layoutObserver = new ResizeObserver(() => updateGameLayout());
 		}
 		const onResize = () => updateGameLayout();
+		const onKeydown = (event: KeyboardEvent) => {
+			if (event.key === 'Escape' && (showHowTo || showInfo)) closeDialog();
+		};
 		window.addEventListener('resize', onResize);
+		window.addEventListener('keydown', onKeydown);
 
 		return () => {
 			colorPreference.removeEventListener('change', onPreferenceChange);
 			layoutObserver?.disconnect();
 			window.removeEventListener('resize', onResize);
+			window.removeEventListener('keydown', onKeydown);
 		};
 	});
 
@@ -296,7 +297,10 @@
 		}
 
 		try {
-			const res = await fetch('/api/stats/games-played?increment=1', { cache: 'no-store' });
+			const res = await fetch('/api/stats/games-played', {
+				method: 'POST',
+				cache: 'no-store'
+			});
 			if (res.ok) {
 				const data = (await res.json()) as { count?: number };
 				globalGamesPlayed = data.count ?? 0;
@@ -331,6 +335,12 @@
 
 			widget = soundcloud.Widget(iframeElement);
 			bindWidgetEvents(soundcloud);
+			clearTimeout(widgetReadyTimeout);
+			widgetReadyTimeout = setTimeout(() => {
+				if (widgetReady) return;
+				loading = false;
+				widgetError = 'SoundCloud took too long to load. Please reload and try again.';
+			}, 15_000);
 		} catch (error) {
 			loading = false;
 			widgetError =
@@ -343,6 +353,7 @@
 	onDestroy(() => {
 		stopAllTimers();
 		clearInterval(countdownInterval);
+		clearTimeout(widgetReadyTimeout);
 		cancelVinylSeekAnimation();
 		window.removeEventListener('pointermove', handleSeekPointerMoveWindow);
 		window.removeEventListener('pointerup', endSeekDrag);
@@ -428,19 +439,30 @@
 				'script[src="https://w.soundcloud.com/player/api.js"]'
 			);
 
+			const timeout = window.setTimeout(
+				() => reject(new Error('SoundCloud took too long to load.')),
+				10_000
+			);
+			const loaded = () => {
+				window.clearTimeout(timeout);
+				resolve();
+			};
+			const failed = () => {
+				window.clearTimeout(timeout);
+				reject(new Error('Failed to load SoundCloud.'));
+			};
+
 			if (existing) {
-				existing.addEventListener('load', () => resolve(), { once: true });
-				existing.addEventListener('error', () => reject(new Error('Failed to load SoundCloud.')), {
-					once: true
-				});
+				existing.addEventListener('load', loaded, { once: true });
+				existing.addEventListener('error', failed, { once: true });
 				return;
 			}
 
 			const tag = document.createElement('script');
 			tag.src = 'https://w.soundcloud.com/player/api.js';
 			tag.async = true;
-			tag.onload = () => resolve();
-			tag.onerror = () => reject(new Error('Failed to load SoundCloud.'));
+			tag.onload = loaded;
+			tag.onerror = failed;
 			document.head.appendChild(tag);
 		});
 	}
@@ -449,6 +471,7 @@
 		const events = soundcloud.Widget.Events;
 
 		widget.bind(events.READY, () => {
+			clearTimeout(widgetReadyTimeout);
 			widget.setVolume(volume);
 			widget.getDuration((duration: number) => {
 				fullDuration = duration;
@@ -511,6 +534,10 @@
 	}
 
 	function updateTime() {
+		if (getLocalDateKey() !== todayKey) {
+			window.location.reload();
+			return;
+		}
 		const now = new Date();
 		const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime();
 		const diff = midnight - now.getTime();
@@ -855,10 +882,7 @@
 	function submitGuess() {
 		if (!canSubmit) return;
 
-		const exactMatch = tracks.find(
-			(track) => normalizeTrackTitle(track.title) === normalizeTrackTitle(userInput)
-		);
-		const guessedTrack = selectedTrack || exactMatch || suggestions[0];
+		const guessedTrack = selectedTrack || exactMatch;
 		if (!guessedTrack) return;
 
 		attemptCount += 1;
@@ -909,6 +933,31 @@
 		userInput = '';
 		selectedTrack = null;
 		shareMessage = '';
+	}
+
+	function handleGuessInput() {
+		if (
+			selectedTrack &&
+			normalizeTrackTitle(selectedTrack.title) !== normalizeTrackTitle(userInput)
+		) {
+			selectedTrack = null;
+		}
+	}
+
+	async function openDialog(dialog: 'howTo' | 'info') {
+		previouslyFocusedElement =
+			document.activeElement instanceof HTMLElement ? document.activeElement : null;
+		showHowTo = dialog === 'howTo';
+		showInfo = dialog === 'info';
+		await tick();
+		dialogEl?.focus();
+	}
+
+	function closeDialog() {
+		showHowTo = false;
+		showInfo = false;
+		previouslyFocusedElement?.focus();
+		previouslyFocusedElement = null;
 	}
 
 	async function loadSuggestionArtwork(nextSuggestions: Track[]) {
@@ -990,19 +1039,51 @@
 			if (!saved) return;
 
 			const parsed = JSON.parse(saved) as SavedGame;
-			attemptInfos = Array.isArray(parsed.attemptInfos) ? parsed.attemptInfos : [];
-			attemptCount = Math.min(Math.max(parsed.attemptCount || 0, 0), maxAttempts);
+			attemptInfos = Array.isArray(parsed.attemptInfos)
+				? parsed.attemptInfos
+						.filter(
+							(attempt): attempt is AttemptInfo =>
+								attempt?.status === 'skip' ||
+								attempt?.status === 'wrong' ||
+								attempt?.status === 'correct'
+						)
+						.slice(0, maxAttempts)
+				: [];
+			attemptCount = Math.min(
+				Math.max(
+					Number.isInteger(parsed.attemptCount) ? parsed.attemptCount : attemptInfos.length,
+					0
+				),
+				maxAttempts
+			);
 			gameOver = Boolean(parsed.gameOver);
 			message = parsed.message || '';
 			won = Boolean(parsed.won);
 			statsRecorded = Boolean(parsed.statsRecorded);
+			if (attemptCount !== attemptInfos.length || (won && !gameOver)) {
+				throw new Error('Saved game state is inconsistent.');
+			}
 		} catch {
-			localStorage.removeItem(storageKey);
+			attemptInfos = [];
+			attemptCount = 0;
+			gameOver = false;
+			message = '';
+			won = false;
+			statsRecorded = false;
+			try {
+				localStorage.removeItem(storageKey);
+			} catch {
+				// Storage may be unavailable in privacy-restricted browser contexts.
+			}
 		}
 	}
 
 	function saveGame(game: SavedGame) {
-		localStorage.setItem(storageKey, JSON.stringify(game));
+		try {
+			localStorage.setItem(storageKey, JSON.stringify(game));
+		} catch (error) {
+			console.warn('Could not save game progress:', error);
+		}
 	}
 
 	function loadStats(): Stats {
@@ -1015,33 +1096,20 @@
 				wins: parsed.wins || 0,
 				streak: parsed.streak || 0,
 				maxStreak: parsed.maxStreak || 0,
+				lastPlayedDate:
+					typeof parsed.lastPlayedDate === 'string' ? parsed.lastPlayedDate : undefined,
 				distribution: Array.from(
 					{ length: maxAttempts },
 					(_, index) => parsed.distribution?.[index] || 0
 				)
 			};
 		} catch {
-			return {
-				played: 0,
-				wins: 0,
-				streak: 0,
-				maxStreak: 0,
-				distribution: Array(maxAttempts).fill(0)
-			};
+			return createEmptyStats(maxAttempts);
 		}
 	}
 
 	function recordStats(didWin: boolean, attempts: number) {
-		const nextStats = {
-			...stats,
-			played: stats.played + 1,
-			wins: stats.wins + (didWin ? 1 : 0),
-			streak: didWin ? stats.streak + 1 : 0,
-			maxStreak: didWin ? Math.max(stats.maxStreak, stats.streak + 1) : stats.maxStreak,
-			distribution: [...stats.distribution]
-		};
-
-		if (didWin) nextStats.distribution[Math.max(Math.min(attempts - 1, maxAttempts - 1), 0)] += 1;
+		const nextStats = calculateNextStats(stats, didWin, attempts, todayKey, maxAttempts);
 		localStorage.setItem(statsKey, JSON.stringify(nextStats));
 		return nextStats;
 	}
@@ -1050,9 +1118,11 @@
 {#if showHowTo}
 	<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
 		<div
+			bind:this={dialogEl}
 			role="dialog"
 			aria-modal="true"
 			aria-labelledby="how-to-title"
+			tabindex="-1"
 			class="w-full max-w-md rounded-lg border p-6 shadow-2xl"
 			style="background: {darkMode ? '#1f1f1f' : COLORS.panel}; color: {darkMode
 				? '#fffaf7'
@@ -1064,7 +1134,7 @@
 					type="button"
 					aria-label="Close how to play"
 					class="rounded-full p-1 transition hover:scale-105"
-					on:click={() => (showHowTo = false)}
+					on:click={closeDialog}
 				>
 					<Icon src={XMark} class="h-6 w-6" />
 				</button>
@@ -1081,9 +1151,11 @@
 {#if showInfo}
 	<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
 		<div
+			bind:this={dialogEl}
 			role="dialog"
 			aria-modal="true"
 			aria-labelledby="info-title"
+			tabindex="-1"
 			class="w-full max-w-lg rounded-lg border p-6 shadow-2xl"
 			style="background: {darkMode ? '#1f1f1f' : COLORS.panel}; color: {darkMode
 				? '#fffaf7'
@@ -1100,7 +1172,7 @@
 					type="button"
 					aria-label="Close info"
 					class="rounded-full p-1 transition hover:scale-105"
-					on:click={() => (showInfo = false)}
+					on:click={closeDialog}
 				>
 					<Icon src={XMark} class="h-6 w-6" />
 				</button>
@@ -1154,7 +1226,7 @@
 					aria-label="Game information and stats"
 					title="Info and stats"
 					class="deck-icon-button"
-					on:click={() => (showInfo = true)}
+					on:click={() => openDialog('info')}
 				>
 					<Icon src={InformationCircle} class="h-5 w-5" />
 				</button>
@@ -1198,7 +1270,7 @@
 					aria-label="How to play"
 					title="How to play"
 					class="deck-icon-button"
-					on:click={() => (showHowTo = true)}
+					on:click={() => openDialog('howTo')}
 				>
 					<Icon src={QuestionMarkCircle} class="h-5 w-5" />
 				</button>
@@ -1602,6 +1674,7 @@
 									<div class="relative flex h-20 w-8 items-center justify-center">
 										<input
 											type="range"
+											aria-label="Volume"
 											min="0"
 											max="100"
 											step="1"
@@ -1888,6 +1961,7 @@
 									type="text"
 									placeholder="Type a song title..."
 									bind:value={userInput}
+									on:input={handleGuessInput}
 									on:keydown={onInputKeydown}
 									on:focus={() => (selectedTrack = null)}
 									autocomplete="off"
@@ -2336,6 +2410,17 @@
 		}
 		50% {
 			height: 28px;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.heardle-page *,
+		.heardle-page *::before,
+		.heardle-page *::after {
+			scroll-behavior: auto !important;
+			animation-duration: 0.01ms !important;
+			animation-iteration-count: 1 !important;
+			transition-duration: 0.01ms !important;
 		}
 	}
 

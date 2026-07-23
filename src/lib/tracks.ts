@@ -100,12 +100,19 @@ export const TRACKS_DATA: TrackData[] = [
 	{ title: 'Worst of You', slug: 'worst-of-you' }
 ];
 
-export const tracks: Track[] = TRACKS_DATA.map(({ title, slug }) => ({
+const scheduledTracks: Track[] = TRACKS_DATA.map(({ title, slug }) => ({
 	title,
 	slug,
 	artist: ARTIST_NAME,
 	url: `https://soundcloud.com/${SC_USER}/${slug}`
 }));
+
+// Keep duplicate SoundCloud uploads in the established daily rotation so a
+// catalog cleanup cannot change a live answer, but show each answer only once
+// in the guess list.
+export const tracks: Track[] = Array.from(
+	new Map(scheduledTracks.map((track) => [normalizeTrackTitle(track.title), track])).values()
+);
 
 export function getLocalDateKey(date = new Date()) {
 	const year = date.getFullYear();
@@ -115,10 +122,15 @@ export function getLocalDateKey(date = new Date()) {
 }
 
 export function getDailyTrack(dateKey = getLocalDateKey()) {
-	const dayNumber = Math.floor(new Date(`${dateKey}T00:00:00`).getTime() / 86_400_000);
-	const cycle = Math.floor(dayNumber / tracks.length);
-	const position = dayNumber % tracks.length;
-	const shuffled = tracks.map((_, index) => index);
+	const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey);
+	if (!match) throw new Error(`Invalid date key: ${dateKey}`);
+
+	const [, year, month, day] = match;
+	const dayNumber = Math.floor(Date.UTC(Number(year), Number(month) - 1, Number(day)) / 86_400_000);
+	const cycle = Math.floor(dayNumber / scheduledTracks.length);
+	const position =
+		((dayNumber % scheduledTracks.length) + scheduledTracks.length) % scheduledTracks.length;
+	const shuffled = scheduledTracks.map((_, index) => index);
 	const rng = seedrandom(`maisie-heardle:${cycle}`);
 
 	for (let index = shuffled.length - 1; index > 0; index -= 1) {
@@ -126,7 +138,7 @@ export function getDailyTrack(dateKey = getLocalDateKey()) {
 		[shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
 	}
 
-	return tracks[shuffled[position]];
+	return scheduledTracks[shuffled[position]];
 }
 
 export function normalizeTrackTitle(title: string) {

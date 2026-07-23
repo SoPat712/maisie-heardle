@@ -90,6 +90,7 @@
 	let seekAnimationFrameId: number | undefined;
 	let vinylSeekAnimation: Animation | undefined;
 	let isVinylSeekAnimating = false;
+	let seekPointerId: number | undefined;
 	let waveformHeights = [4, 4, 4, 4, 4, 4, 4];
 	let waveformInterval: ReturnType<typeof setInterval>;
 
@@ -501,7 +502,11 @@
 
 		widget.bind(events.FINISH, () => {
 			stopAllTimers();
-			currentPosition = gameOver ? fullDuration : segmentDurations[attemptCount];
+			if (!gameOver) {
+				currentPosition = segmentDurations[attemptCount];
+			} else if (currentPosition >= fullDuration - 1000) {
+				currentPosition = fullDuration;
+			}
 		});
 
 		widget.bind(events.PLAY_PROGRESS, (event) => {
@@ -694,17 +699,54 @@
 		}
 	}
 
-	function handleSeekInput(event: Event) {
-		if (!widgetReady || !gameOver || !fullDuration) return;
-		const nextPosition = Number((event.currentTarget as HTMLInputElement).value) * 1000;
+	function seekPositionFromClientX(clientX: number, element: HTMLElement) {
+		const bounds = element.getBoundingClientRect();
+		const ratio = Math.min(Math.max((clientX - bounds.left) / bounds.width, 0), 1);
+		return ratio * fullDuration;
+	}
+
+	function previewSeekPosition(clientX: number, element: HTMLElement) {
+		const nextPosition = seekPositionFromClientX(clientX, element);
 		const previousPosition = currentPosition;
 		currentPosition = nextPosition;
 		spinVinylDuringScrub(nextPosition - previousPosition);
 	}
 
-	function handleSeekChange(event: Event) {
+	function handleSeekPointerDown(event: PointerEvent) {
 		if (!widgetReady || !gameOver || !fullDuration) return;
-		const nextPosition = Number((event.currentTarget as HTMLInputElement).value) * 1000;
+		event.preventDefault();
+		const element = event.currentTarget as HTMLElement;
+		seekPointerId = event.pointerId;
+		element.setPointerCapture(event.pointerId);
+		previewSeekPosition(event.clientX, element);
+	}
+
+	function handleSeekPointerMove(event: PointerEvent) {
+		if (seekPointerId !== event.pointerId) return;
+		previewSeekPosition(event.clientX, event.currentTarget as HTMLElement);
+	}
+
+	function handleSeekPointerEnd(event: PointerEvent) {
+		if (seekPointerId !== event.pointerId) return;
+		const element = event.currentTarget as HTMLElement;
+		previewSeekPosition(event.clientX, element);
+		element.releasePointerCapture(event.pointerId);
+		seekPointerId = undefined;
+		seekToPosition(currentPosition, { animateVinyl: true });
+	}
+
+	function handleSeekKeydown(event: KeyboardEvent) {
+		if (!widgetReady || !gameOver || !fullDuration) return;
+		const step = event.shiftKey ? 10_000 : 5_000;
+		let nextPosition: number | undefined;
+
+		if (event.key === 'ArrowLeft') nextPosition = currentPosition - step;
+		if (event.key === 'ArrowRight') nextPosition = currentPosition + step;
+		if (event.key === 'Home') nextPosition = 0;
+		if (event.key === 'End') nextPosition = fullDuration;
+		if (nextPosition === undefined) return;
+
+		event.preventDefault();
 		seekToPosition(nextPosition, { animateVinyl: true });
 	}
 
@@ -1650,20 +1692,23 @@
 								class="absolute top-0 left-0 h-full transition-[width] duration-100"
 								style="width: {fillPercent}%; background: {COLORS.accent};"
 							></div>
-							<input
-								type="range"
-								min="0"
-								max={(fullDuration || TOTAL_MS) / 1000}
-								step="0.1"
-								value={currentPosition / 1000}
+							<button
+								type="button"
 								class="seek-slider absolute inset-0 z-20 h-full w-full cursor-pointer bg-transparent focus:ring-2 focus:outline-none"
 								style="--tw-ring-color: {COLORS.primary}; touch-action: none;"
 								aria-label="Seek finished song"
+								aria-valuemin="0"
+								aria-valuemax={Math.round((fullDuration || TOTAL_MS) / 1000)}
+								aria-valuenow={Math.round(currentPosition / 1000)}
 								aria-valuetext={formatTime(currentPosition)}
+								role="slider"
 								title="Seek song"
-								on:input={handleSeekInput}
-								on:change={handleSeekChange}
-							/>
+								on:pointerdown={handleSeekPointerDown}
+								on:pointermove={handleSeekPointerMove}
+								on:pointerup={handleSeekPointerEnd}
+								on:pointercancel={handleSeekPointerEnd}
+								on:keydown={handleSeekKeydown}
+							></button>
 						</div>
 
 						<div
@@ -1764,20 +1809,23 @@
 								{/each}
 							{/if}
 							{#if gameOver}
-								<input
-									type="range"
-									min="0"
-									max={(fullDuration || TOTAL_MS) / 1000}
-									step="0.1"
-									value={currentPosition / 1000}
+								<button
+									type="button"
 									class="seek-slider absolute inset-0 z-20 h-full w-full cursor-pointer bg-transparent focus:ring-2 focus:outline-none"
 									style="--tw-ring-color: {COLORS.primary}; touch-action: none;"
 									aria-label="Seek finished song"
+									aria-valuemin="0"
+									aria-valuemax={Math.round((fullDuration || TOTAL_MS) / 1000)}
+									aria-valuenow={Math.round(currentPosition / 1000)}
 									aria-valuetext={formatTime(currentPosition)}
+									role="slider"
 									title="Seek song"
-									on:input={handleSeekInput}
-									on:change={handleSeekChange}
-								/>
+									on:pointerdown={handleSeekPointerDown}
+									on:pointermove={handleSeekPointerMove}
+									on:pointerup={handleSeekPointerEnd}
+									on:pointercancel={handleSeekPointerEnd}
+									on:keydown={handleSeekKeydown}
+								></button>
 							{/if}
 						</div>
 
@@ -2231,35 +2279,9 @@
 	}
 
 	.seek-slider {
-		-webkit-appearance: none;
-		appearance: none;
+		padding: 0;
+		border: 0;
 		margin: 0;
-	}
-
-	.seek-slider::-webkit-slider-runnable-track {
-		height: 100%;
-		background: transparent;
-	}
-
-	.seek-slider::-webkit-slider-thumb {
-		width: 1px;
-		height: 100%;
-		border: 0;
-		background: transparent;
-		-webkit-appearance: none;
-		appearance: none;
-	}
-
-	.seek-slider::-moz-range-track {
-		height: 100%;
-		background: transparent;
-	}
-
-	.seek-slider::-moz-range-thumb {
-		width: 1px;
-		height: 100%;
-		border: 0;
-		background: transparent;
 	}
 
 	.share-button {
